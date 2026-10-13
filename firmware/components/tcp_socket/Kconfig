@@ -1,0 +1,15 @@
+menu "Robot arm network"
+
+    config ROBOT_ARM_WIFI_SSID
+        string "Wi-Fi SSID"
+        default ""
+        help
+            Network name. Store local settings in sdkconfig, which is ignored by Git.
+
+    config ROBOT_ARM_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+        help
+            Network password. Do not put credentials in committed defaults.
+
+endmenu

@@ -107,6 +107,7 @@ esp_err_t robot_arm_init(void)
     return ESP_OK;
 }
 
+/* All callers hold state_mutex, including the movement task. */
 static esp_err_t init_pca9685(void)
 {
     if (pca9685_initialized) {
@@ -182,15 +183,11 @@ esp_err_t set_servo_angle(int servo, int angle)
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t err = init_pca9685();
-    if (err != ESP_OK) {
-        return err;
-    }
     if (xSemaphoreTake(state_mutex, portMAX_DELAY) != pdTRUE) {
         return ESP_FAIL;
     }
 
-    err = write_servo_angle(servo, angle);
+    esp_err_t err = write_servo_angle(servo, angle);
     if (err == ESP_OK) {
         current_angle[servo] = (float)angle;
         target_angle[servo] = (float)angle;
@@ -221,14 +218,13 @@ esp_err_t lerp_to_servo_angle(int servo, int destination_angle)
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t err = init_pca9685();
-    if (err != ESP_OK) {
-        return err;
-    }
     if (xSemaphoreTake(state_mutex, portMAX_DELAY) != pdTRUE) {
         return ESP_FAIL;
     }
-    target_angle[servo] = (float)destination_angle;
+    esp_err_t err = init_pca9685();
+    if (err == ESP_OK) {
+        target_angle[servo] = (float)destination_angle;
+    }
     xSemaphoreGive(state_mutex);
-    return ESP_OK;
+    return err;
 }

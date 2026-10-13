@@ -24,8 +24,8 @@ The ESP32 handles real-time servo motion, motion limits, and safety. Computer vi
 
 The system is split into a web client, a host backend, and the ESP32 firmware:
 
-- **Web client (`web/`)** — browser interface for the system. Its screens and backend API are not defined yet.
-- **Backend (`backend/`, planned for Raspberry Pi)** — OpenCV detection and localisation, inverse kinematics (pixel → world → joint angles), and the job/state interface.
+- **Web client (`web/`)** — browser interface for the system. Minimal Dutch control form for a servokanaal (0–15) and doelhoek (0–180°), served by the backend.
+- **Backend (`backend/`)** — Node.js/Express serves the web client and forwards validated servo targets to the ESP32 over TCP. OpenCV detection, inverse kinematics (pixel → world → joint angles), and the job/state interface remain planned.
 - **Firmware (`firmware/`)** — ESP-IDF and FreeRTOS C++ for servo joint control, motion interpolation, safety limits, and the arm state machine.
 
 Planned data flow:
@@ -33,9 +33,9 @@ Planned data flow:
 - Camera → backend: **UDP** image frames.
 - Backend → firmware: **TCP** target joint positions and commands.
 - Firmware → backend: **TCP** state, joint summary, perception result, and abort/stop events.
-- Web client ↔ backend: transport and API contract **to be decided**.
+- Web client ↔ backend: same-origin HTTP JSON (`POST /api/servo`).
 
-The exact message format, network setup, and web/backend interface still need to be specified.
+The current manual-control message format is documented below. Camera transport and the future job/state messages still need to be specified.
 
 ## Hardware
 
@@ -70,31 +70,70 @@ README.md
 
 ## Getting started
 
-These are placeholder commands based on the planned layout. They have not been verified against a buildable firmware or backend project yet. Replace the target, serial port, and entry-point paths when those are known.
+The backend can run locally or on the planned Raspberry Pi host. Firmware commands depend on your ESP-IDF installation and board; replace the serial port as needed.
 
 ### Firmware
 
+The current firmware targets `esp32s3` (ESP32-S3). Confirm the exact physical board before flashing.
+
 ```sh
 cd firmware
-idf.py set-target esp32
+idf.py set-target esp32s3
+idf.py menuconfig # Robot arm network: configure Wi-Fi SSID and password
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
+Wi-Fi settings are stored in the local, Git-ignored `firmware/sdkconfig`. Configure them under **Robot arm network** in `idf.py menuconfig`; keep credentials out of committed defaults.
+
 ### Backend
 
-Once `backend/requirements.txt` and `backend/main.py` exist:
+Use Node.js 22.9.0 or newer:
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -r backend/requirements.txt
-python3 backend/main.py
+cd backend
+npm ci
+cp .env.example .env
+# Set ESP32_HOST in .env to the ESP32 address on your local network.
+npm start
 ```
+
+`ESP32_HOST` is required. `ESP32_PORT` defaults to `3333`; `PORT` defaults to `3000`. Both ports must be integers from 1 to 65535. The sample address is illustrative; use the actual ESP32 address. Configuration is read at startup.
 
 ### Web client
 
-The web framework, package manager, and start command have not been selected yet.
+Open `http://localhost:3000` (or the host's address and configured port). The backend serves `web/static/index.html`, `/js`, and `/style` from the same origin; no separate frontend build or server is needed. Select a channel and angle, then submit. The form disables submission while awaiting a result and displays connection or validation errors.
+
+### Manual servo API and TCP protocol
+
+```sh
+curl -X POST http://localhost:3000/api/servo \
+  -H 'Content-Type: application/json' \
+  -d '{"servo":0,"angle":90}'
+```
+
+`servo` and `angle` must be JSON numbers and integers: channel `0–15`, angle `0–180`. Channels map directly to PCA9685 channels; there is no one-based joint numbering. Each valid HTTP request opens one TCP connection to the configured ESP32 and sends ASCII decimal `channel:angle` followed by a newline, for example `0:90\n` (the final byte is LF).
+
+The firmware replies with `OK\n` when it accepts the target or `ERR\n` when it rejects it. Acknowledgements may arrive in fragments. Parsing stores at most four bytes, and the entire connection/acknowledgement has an absolute two-second deadline. The backend closes each connection after the result and does not retry automatically.
+
+| HTTP status | Meaning |
+| --- | --- |
+| `200` | Target accepted (`OK`); motion may still be underway. |
+| `400` | Invalid JSON, missing fields, wrong types, or out-of-range values. |
+| `503` | TCP connection or transport failure. |
+| `504` | No complete acknowledgement before the deadline. |
+| `502` | Firmware rejection, malformed response, or connection closed without a complete acknowledgement. |
+
+Responses are JSON with `message` on success or `error` on failure. A timeout or lost connection can occur after the target was accepted; check the arm before sending another target. Use this manual-control server on the trusted project network; authentication and coordinated motion jobs are future work.
+
+### Backend tests
+
+```sh
+cd backend
+npm test
+```
+
+Node's test runner exercises actual local TCP and HTTP servers for framing, fragmented acknowledgements, validation, error mapping, timeouts, and static file delivery. It does not require an ESP32. Physical motion and hardware integration require the board.
 
 ## Conventions
 
@@ -109,7 +148,7 @@ The web framework, package manager, and start command have not been selected yet
 - [x] Robot-arm 3D model created in Fusion 360.
 - [ ] ESP32 firmware: servo motion and state machine.
 - [ ] Host vision: OpenCV detection and localisation.
-- [ ] Web interface and backend API.
+- [x] Manual servo web interface and Express/TCP backend API.
 - [ ] End-to-end pick-and-place demo.
 - [ ] Measure position error, latency, false positives, and success rate over **[N]** runs.
 

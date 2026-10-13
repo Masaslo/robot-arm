@@ -5,6 +5,7 @@
 
 #include "esp_console.h"
 #include "robot_arm.h"
+#include "tcp_socket.h"
 
 static bool parse_long(const char *text, long min_value, long max_value, long *value)
 {
@@ -99,7 +100,9 @@ static int command_lerp(int argc, char **argv)
 
 void app_main(void)
 {
+    ESP_ERROR_CHECK(tcp_socket_wifi_init());
     ESP_ERROR_CHECK(robot_arm_init());
+    ESP_ERROR_CHECK(tcp_socket_start());
     printf("Commando's: servo <kanaal> <hoek>, speed <graden-per-seconde>, lerp <kanaal> <doelhoek>\n");
 
     const esp_console_cmd_t servo_command = {

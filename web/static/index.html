@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robotarm bedienen</title>
+  <link rel="stylesheet" href="/style/style.css">
+  <script src="/js/robot_arm.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Robotarm bedienen</h1>
+    <p>Stel een doelhoek in voor één servokanaal.</p>
+    <form id="servo-form">
+      <div class="fields">
+        <div><label for="servo">Servokanaal</label><input id="servo" name="servo" type="number" min="0" max="15" step="1" value="0" required aria-describedby="servo-help"><small id="servo-help">PCA9685-kanaal 0–15</small></div>
+        <div><label for="angle">Doelhoek (graden)</label><input id="angle" name="angle" type="number" min="0" max="180" step="1" value="90" required aria-describedby="angle-help"><small id="angle-help">Gehele hoek van 0–180°</small></div>
+      </div>
+      <button type="submit">Doelhoek versturen</button>
+    </form>
+    <p id="result" role="status" aria-live="polite" aria-atomic="true">Klaar om een doelhoek te versturen.</p>
+    <p class="note">Een bevestiging betekent dat het doel is geaccepteerd. De beweging kan nog bezig zijn.</p>
+  </main>
+</body>
+</html>

@@ -1,3 +1,3 @@
 idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES robot_arm console log)
+                       REQUIRES robot_arm tcp_socket console log)
