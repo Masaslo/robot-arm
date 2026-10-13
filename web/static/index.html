@@ -1,25 +1,73 @@
 <!doctype html>
 <html lang="nl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robotarm bedienen</title>
-  <link rel="stylesheet" href="/style/style.css">
-  <script src="/js/robot_arm.js" defer></script>
-</head>
-<body>
-  <main>
-    <h1>Robotarm bedienen</h1>
-    <p>Stel een doelhoek in voor één servokanaal.</p>
-    <form id="servo-form">
-      <div class="fields">
-        <div><label for="servo">Servokanaal</label><input id="servo" name="servo" type="number" min="0" max="15" step="1" value="0" required aria-describedby="servo-help"><small id="servo-help">PCA9685-kanaal 0–15</small></div>
-        <div><label for="angle">Doelhoek (graden)</label><input id="angle" name="angle" type="number" min="0" max="180" step="1" value="90" required aria-describedby="angle-help"><small id="angle-help">Gehele hoek van 0–180°</small></div>
-      </div>
-      <button type="submit">Doelhoek versturen</button>
-    </form>
-    <p id="result" role="status" aria-live="polite" aria-atomic="true">Klaar om een doelhoek te versturen.</p>
-    <p class="note">Een bevestiging betekent dat het doel is geaccepteerd. De beweging kan nog bezig zijn.</p>
-  </main>
-</body>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#202123">
+    <title>Robot Arm · Manual</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23202123'/%3E%3Cpath d='M7 25h15M12 25V14l9-7 5 5-6 5' fill='none' stroke='%239ee3e9' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
+    <script type="module" crossorigin src="/assets/index-CPIqB4Y2.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B97_R6ql.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#manual-panel">Naar de bediening</a>
+    <div class="app-shell">
+      <header class="app-header">
+        <h1 class="wordmark"><svg aria-hidden="true" viewBox="0 0 32 32"><path d="M5 27h19M11 27V15l11-9 6 6-7 6M8 15h6M19 4l5 5M21 18l4 4 4-4"/></svg>Robot Arm</h1>
+        <div class="mode-switch" role="tablist" aria-label="Bedieningsmodus">
+          <span class="mode-indicator" aria-hidden="true"></span>
+          <button type="button" id="manual-tab" role="tab" aria-selected="true" aria-controls="manual-panel" tabindex="0">Manual</button>
+          <button type="button" id="automatic-tab" role="tab" aria-selected="false" aria-controls="automatic-panel" tabindex="-1">Automatic</button>
+        </div>
+        <p class="header-note">Positie &amp; beweging</p>
+      </header>
+      <main>
+        <section id="manual-panel" role="tabpanel" aria-labelledby="manual-tab" tabindex="0">
+          <form id="manual-form" class="manual-workspace" novalidate aria-busy="false">
+            <section class="widget target-widget" aria-labelledby="target-heading">
+              <h2 id="target-heading">Doelpositie</h2>
+              <p class="widget-description" id="model-units">X, Y en Z in genormaliseerde modeleenheden.</p>
+              <div class="target-fields">
+                <label class="number-field" for="target-x"><span>X <span class="field-description">vooruit</span></span><input id="target-x" name="x" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
+                <label class="number-field" for="target-y"><span>Y <span class="field-description">zijwaarts</span></span><input id="target-y" name="y" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
+                <label class="number-field" for="target-z"><span>Z <span class="field-description">hoogte</span></span><input id="target-z" name="z" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
+                <label class="number-field pitch-field" for="tool-pitch"><span>Toolpitch <span class="field-description">graden</span></span><span class="input-with-unit"><input id="tool-pitch" name="toolPitchDeg" type="number" step="1" required aria-describedby="pose-status"><span aria-hidden="true">°</span></span></label>
+              </div>
+              <p class="pose-status" id="pose-status" aria-live="polite"></p>
+            </section>
+            <figure class="arm-preview" aria-labelledby="scene-heading preview-label">
+              <div class="scene-title"><h2 id="scene-heading">Voorbeeld in 3D</h2><span class="demo-badge">Demomodel</span></div>
+              <div class="canvas-container"><canvas id="arm-canvas" aria-label="3D-voorbeeld van de berekende robotarmpositie"></canvas><div id="preview-fallback" class="preview-fallback" hidden><h3>3D-weergave niet beschikbaar</h3><p>WebGL kon niet starten of is onderbroken. Herlaad de pagina in een browser met WebGL. Versturen is geblokkeerd.</p></div></div>
+              <figcaption id="preview-label"></figcaption>
+            </figure>
+            <div class="servo-controls">
+              <section class="widget angles-widget" aria-labelledby="angles-heading">
+                <div class="widget-title-row"><h2 id="angles-heading">Servohoeken</h2><span class="ik-badge">IK · 0–3</span></div>
+                <p class="widget-description" id="readouts-label">Servohoeken · kanalen 0–5</p>
+                <dl class="angle-list" aria-describedby="readouts-label">
+                  <div><dt><span class="channel">0</span> Heup</dt><dd><output id="angle-0">—</output></dd></div>
+                  <div><dt><span class="channel">1</span> Schouder</dt><dd><output id="angle-1">—</output></dd></div>
+                  <div><dt><span class="channel">2</span> Elleboog</dt><dd><output id="angle-2">—</output></dd></div>
+                  <div><dt><span class="channel">3</span> Pols</dt><dd><output id="angle-3">—</output></dd></div>
+                  <div class="secondary-angle"><dt><span class="channel">4</span> Palm</dt><dd><output id="angle-4">—</output></dd></div>
+                  <div class="secondary-angle"><dt><span class="channel">5</span> Vingers</dt><dd><output id="angle-5">—</output></dd></div>
+                </dl>
+              </section>
+              <section class="widget hand-widget" aria-labelledby="hand-heading">
+                <h2 id="hand-heading">Palm &amp; vingers</h2>
+                <div class="slider-field"><label for="palm"><span>Palm <span class="channel">4</span></span><output for="palm" id="palmDeg-value">90°</output></label><input id="palm" name="palmDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="palmDeg">0°</span><span data-range-max="palmDeg">180°</span></div></div>
+                <div class="slider-field"><label for="fingers"><span>Vingers <span class="channel">5</span></span><output for="fingers" id="fingersDeg-value">90°</output></label><input id="fingers" name="fingersDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="fingersDeg">0°</span><span data-range-max="fingersDeg">180°</span></div></div>
+              </section>
+              <div class="send-controls"><button class="send-button" type="submit" id="send-angles" disabled aria-describedby="calibration-status send-status">Send Angles<svg aria-hidden="true" viewBox="0 0 20 20"><path d="M3 10h13M11 5l5 5-5 5"/></svg></button><p class="send-status" id="send-status" role="status" aria-live="polite" aria-atomic="true"></p></div>
+            </div>
+            <div class="workspace-note"><span class="status-dot" aria-hidden="true"></span><p id="calibration-status">Demomodel · versturen geblokkeerd tot de arm is gekalibreerd.</p></div>
+          </form>
+        </section>
+        <section id="automatic-panel" role="tabpanel" aria-labelledby="automatic-tab" tabindex="0" hidden>
+          <div class="automatic-placeholder"><svg aria-hidden="true" viewBox="0 0 48 48"><rect x="6" y="12" width="26" height="24" rx="5"/><path d="m32 20 10-6v20l-10-6M15 23h8M19 19v8"/></svg><h2>Automatic</h2><p>De camerastream volgt later.</p><p class="widget-description">Gebruik Manual om een doelpositie te bekijken.</p><button class="text-button" id="back-to-manual" type="button">Terug naar Manual<svg aria-hidden="true" viewBox="0 0 20 20"><path d="M3 10h13M11 5l5 5-5 5"/></svg></button></div>
+        </section>
+      </main>
+      <footer class="app-footer"><span>Robotarm · Studio Smart Cities</span><span>Voorbeeld, geen positieterugkoppeling</span></footer>
+    </div>
+  </body>
 </html>

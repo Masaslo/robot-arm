@@ -24,7 +24,7 @@ The ESP32 handles real-time servo motion, motion limits, and safety. Computer vi
 
 The system is split into a web client, a host backend, and the ESP32 firmware:
 
-- **Web client (`web/`)** — browser interface for the system. Minimal Dutch control form for a servokanaal (0–15) and doelhoek (0–180°), served by the backend.
+- **Web client (`web/`)** — Dutch Manual interface with XYZ/toolpitch inverse kinematics, a Three.js arm preview and Palm/Vingers sliders. Vite builds the client for Express; sending is blocked until real geometry and servo calibration are configured. Automatic is a future camera placeholder.
 - **Backend (`backend/`)** — Node.js/Express serves the web client and forwards validated servo targets to the ESP32 over TCP. OpenCV detection, inverse kinematics (pixel → world → joint angles), and the job/state interface remain planned.
 - **Firmware (`firmware/`)** — ESP-IDF and FreeRTOS C++ for servo joint control, motion interpolation, safety limits, and the arm state machine.
 
@@ -33,7 +33,7 @@ Planned data flow:
 - Camera → backend: **UDP** image frames.
 - Backend → firmware: **TCP** target joint positions and commands.
 - Firmware → backend: **TCP** state, joint summary, perception result, and abort/stop events.
-- Web client ↔ backend: same-origin HTTP JSON (`POST /api/servo`).
+- Web client ↔ backend: same-origin HTTP JSON. The new Manual client expects one `POST /api/arm/angles` batch (backend implementation pending); the existing single-servo `POST /api/servo` API remains available.
 
 The current manual-control message format is documented below. Camera transport and the future job/state messages still need to be specified.
 
@@ -102,7 +102,18 @@ npm start
 
 ### Web client
 
-Open `http://localhost:3000` (or the host's address and configured port). The backend serves `web/static/index.html`, `/js`, and `/style` from the same origin; no separate frontend build or server is needed. Select a channel and angle, then submit. The form disables submission while awaiting a result and displays connection or validation errors.
+Use Node.js 22.12.0 or newer and build the frontend before starting Express:
+
+```sh
+cd web
+npm ci
+npm test
+npm run build
+```
+
+Start the backend as above, then open `http://localhost:3000` (or the host's address and configured port). Express serves the generated `web/static/index.html` and `/assets`. Source modules remain in `web/js`, and source styles in `web/style`; rebuild after changes. For development, run `npm run dev` in `web` and use the printed Vite URL. Its `/api` proxy targets `http://localhost:3000`.
+
+Manual previews a pose from X/Y/Z and toolpitch, with sliders for Palm and Vingers. Default geometry is a normalized demo; **Send Angles is blocked until calibration is configured**. The client sends one six-channel batch to `POST /api/arm/angles`; that endpoint must still be implemented separately. It does not fall back to six single-servo requests. See [web/README.md](web/README.md) for calibration, commands and the exact batch contract. The existing single-servo API below remains unchanged.
 
 ### Manual servo API and TCP protocol
 
