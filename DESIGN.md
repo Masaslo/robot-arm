@@ -1,0 +1,3 @@
+# Robot Arm interface
+
+Use the user-selected Robo-Twin visual world: charcoal canvas #202123, gray widgets #42474b, turquoise accent #9ee3e9, near-white type. The arm occupies the center of the viewport; small cards contain target inputs and servo outputs. Keep a calm operator interface, with a segmented Manual/Automatic control and explicit Send Angles action. Use system sans and tabular measurement values. Preserve readable contrast, keyboard focus and motion preferences. On narrow screens panels stack with a usable canvas height. No font/network image dependencies, fake hardware metrics, or unrelated dashboard features.
