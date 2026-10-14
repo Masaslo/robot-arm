@@ -55,7 +55,7 @@ Meet en configureer de echte arm vóór gebruik:
 
 Pas bij echte lengteeenheden ook de tekst `model-units` in `index.html` aan naar de gekozen eenheid. Hoekwaarden rechts zijn berekende servo-commando's, geen gemeten posities. Een leeg/ongeldig doel behoudt de laatste geldige 3D-pose en servohoekwaarden met een expliciet label; het huidige doel wordt niet verstuurd. De hoofdgewrichten hebben geen handmatige override. WebGL-fouten blokkeren versturen en tonen een tekstmelding.
 
-## Batch-API voor de backendimplementatie
+## Batch-API
 
 De frontend verwacht precies **één** same-origin verzoek per expliciete Send Angles-actie:
 
@@ -70,4 +70,4 @@ De sleutels zijn exact `"0"` tot en met `"5"`; iedere waarde is een JSON-getal, 
 
 Een 2xx-response betekent acceptatie van het doel; de beweging kan nog bezig zijn. JSON met `{"message":"..."}` of een lege 204-response is toegestaan. De UI meldt backendacceptatie en claimt geen voltooid bewegen. Voor fouten verwacht de client een niet-2xx-status met `{"error":"leesbare melding"}` (of `message`); een lege, HTML- of anderszins ongeldige JSON-body krijgt een HTTP-foutmelding. De client kapt na 15 seconden af, toont netwerk/timeoutfouten en probeert niet automatisch opnieuw. Een retry is een nieuwe expliciete actie; een verloren antwoord kan na acceptatie optreden.
 
-**Dit endpoint is nog niet geïmplementeerd in de bestaande backend.** De backendchat moet gezamenlijke validatie van de zes targets, firmwaretransport en bevestigingsbetekenis implementeren. Deze frontendwijziging verandert het bestaande `POST /api/servo`-contract of de firmware niet. Frontendkalibratie vervangt geen backend- en firmwarelimieten.
+**Dit endpoint is geïmplementeerd in `backend/app.js`.** De backend controleert eerst alle zes kanalen en hoeken. Daarna stuurt hij ze op volgorde 0–5 over de persistente TCP-verbinding die de ESP32 met de backend opent: één `kanaal:hoek\n`-commando tegelijk, met een `OK\n`-bevestiging per commando. Beide HTTP-endpoints delen dezelfde wachtrij; er wacht maximaal één commando op bevestiging. Pas na zes bevestigingen volgt HTTP 200. Bij een fout stopt het versturen; eerdere doelen kunnen dan al geaccepteerd zijn en bewegen. Er is geen automatische retry of rollback en de zes doelen worden niet gelijktijdig toegepast. Bij verbreken van de verbinding mislukken ook wachtende commando's; na opnieuw verbinden worden ze niet automatisch herhaald. Zonder verbonden ESP32 geeft de backend HTTP 503. `POST /api/servo` blijft beschikbaar. Frontendkalibratie vervangt geen backend- en firmwarelimieten.
