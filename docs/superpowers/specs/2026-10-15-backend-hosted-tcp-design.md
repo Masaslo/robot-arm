@@ -27,7 +27,7 @@ Make the JavaScript backend the TCP listener for servo control. The ESP32 joins 
 
 - Requests received before a firmware connection is available return HTTP 503.
 - A disconnect or socket error during a command returns HTTP 503. The backend does not retry a command because the firmware may have accepted it before the connection failed.
-- A firmware `ERR` or malformed acknowledgement returns HTTP 502.
+- A firmware `ERR` returns HTTP 502 and leaves the aligned connection open. A malformed acknowledgement returns HTTP 502 and closes the connection so leftover bytes cannot be mistaken for a later acknowledgement.
 - If no complete acknowledgement arrives within the existing two-second deadline, the request returns HTTP 504 and the backend closes that TCP connection. Closing it prevents a late acknowledgement from being mistaken for a later command; the ESP32 reconnects, and queued commands fail with HTTP 503 rather than being retried.
 - A batch stops at the first failed command. Earlier channel targets may already have been accepted, matching the current API behavior.
 
