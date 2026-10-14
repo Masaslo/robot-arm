@@ -12,4 +12,16 @@ menu "Robot arm network"
         help
             Network password. Do not put credentials in committed defaults.
 
+    config ROBOT_ARM_BACKEND_IP
+        string "Backend IPv4 address"
+        default ""
+        help
+            IPv4 address of the backend TCP listener. Leave empty to disable
+            the TCP client until a backend address has been configured.
+
+    config ROBOT_ARM_BACKEND_PORT
+        int "Backend TCP port"
+        range 1 65535
+        default 3333
+
 endmenu

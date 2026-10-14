@@ -2,6 +2,7 @@
 #include "sdkconfig.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include "freertos/FreeRTOS.h"
@@ -10,7 +11,6 @@
 #include "lwip/sockets.h"
 #include "robot_arm.h"
 #include "tcp_protocol.h"
-#include "tcp_close.h"
 #include <string.h>
 
 #include "esp_event.h"
@@ -25,8 +25,10 @@
 static const char *TAG = "tcp_socket_wifi";
 static bool s_wifi_started;
 static EventGroupHandle_t s_network_events;
-static TaskHandle_t s_server_task;
+static TaskHandle_t s_client_task;
 #define IP_READY BIT0
+/* Latch brief disconnects even if Wi-Fi recovers between socket polls. */
+#define IP_LOST BIT1
 
 static void wifi_event_handler(void *arg,
                                esp_event_base_t event_base,
@@ -42,6 +44,7 @@ static void wifi_event_handler(void *arg,
             ESP_LOGE(TAG, "Wi-Fi verbinding starten mislukt: %s", esp_err_to_name(err));
         }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        xEventGroupSetBits(s_network_events, IP_LOST);
         xEventGroupClearBits(s_network_events, IP_READY);
         ESP_LOGW(TAG, "Wi-Fi verbinding verbroken; opnieuw verbinden...");
         esp_err_t err = esp_wifi_connect();
@@ -49,6 +52,7 @@ static void wifi_event_handler(void *arg,
             ESP_LOGE(TAG, "Opnieuw verbinden mislukt: %s", esp_err_to_name(err));
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
+        xEventGroupSetBits(s_network_events, IP_LOST);
         xEventGroupClearBits(s_network_events, IP_READY);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         xEventGroupSetBits(s_network_events, IP_READY);
@@ -141,102 +145,157 @@ esp_err_t tcp_socket_wifi_init(void)
     return ESP_OK;
 }
 
-static void reply_to_client(int client, bool accepted)
+static bool network_ready(void)
+{
+    return (xEventGroupGetBits(s_network_events) & (IP_READY | IP_LOST)) == IP_READY;
+}
+
+/* Nonblocking sockets and short polls keep all socket waits responsive to Wi-Fi loss. */
+static int wait_for_socket(int sock, bool writable, TickType_t started, TickType_t timeout)
+{
+    while (network_ready()) {
+        TickType_t elapsed = xTaskGetTickCount() - started;
+        if (elapsed >= timeout) {
+            errno = ETIMEDOUT;
+            return 0;
+        }
+        unsigned remaining_ms = (timeout - elapsed) * portTICK_PERIOD_MS;
+        unsigned poll_ms = remaining_ms < 250 ? remaining_ms : 250;
+        struct timeval poll_timeout = {
+            .tv_sec = 0,
+            .tv_usec = poll_ms * 1000,
+        };
+        fd_set ready;
+        FD_ZERO(&ready);
+        FD_SET(sock, &ready);
+        int result = select(sock + 1, writable ? NULL : &ready,
+                            writable ? &ready : NULL, NULL, &poll_timeout);
+        if (result < 0 && errno == EINTR) continue;
+        if (result != 0) return result;
+    }
+    errno = ENETDOWN;
+    return -1;
+}
+
+static bool connect_to_backend(int sock, const struct sockaddr_in *address)
+{
+    if (fcntl(sock, F_SETFL, O_NONBLOCK) < 0) return false;
+    const TickType_t started = xTaskGetTickCount();
+    if (connect(sock, (const struct sockaddr *)address, sizeof(*address)) == 0)
+        return network_ready();
+    if (errno != EINPROGRESS && errno != EWOULDBLOCK) return false;
+    if (wait_for_socket(sock, true, started, pdMS_TO_TICKS(2000)) != 1)
+        return false;
+    int error = 0;
+    socklen_t length = sizeof(error);
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &length) < 0)
+        return false;
+    if (error != 0) {
+        errno = error;
+        return false;
+    }
+    return network_ready();
+}
+
+static bool reply_to_backend(int sock, bool accepted)
 {
     const char *reply = accepted ? "OK\n" : "ERR\n";
     size_t remaining = strlen(reply);
+    const TickType_t started = xTaskGetTickCount();
     while (remaining) {
-        int sent = send(client, reply, remaining, 0);
-        if (sent < 0 && errno == EINTR) continue;
-        if (sent <= 0) break;
+        if (wait_for_socket(sock, true, started, pdMS_TO_TICKS(5000)) != 1)
+            return false;
+        int sent = send(sock, reply, remaining, 0);
+        if (sent < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+            continue;
+        if (sent <= 0) return false;
         reply += sent;
         remaining -= sent;
     }
+    return true;
 }
 
-static void handle_client(int client)
+static void handle_backend(int sock)
 {
-    struct timeval timeout = { .tv_sec = 5 };
-    if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0 ||
-        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0)
-        return;
     tcp_frame_t frame = {0};
-    tcp_frame_result_t result = TCP_FRAME_MORE;
-    /* An absolute deadline also bounds clients that trickle bytes. */
     TickType_t started = xTaskGetTickCount();
-    while (result == TCP_FRAME_MORE &&
-           (xTaskGetTickCount() - started) < pdMS_TO_TICKS(5000) &&
-           (xEventGroupGetBits(s_network_events) & IP_READY)) {
-        TickType_t remaining = pdMS_TO_TICKS(5000) - (xTaskGetTickCount() - started);
-        if (remaining > pdMS_TO_TICKS(5000)) break;
-        unsigned remaining_ms = remaining * portTICK_PERIOD_MS;
-        if (remaining_ms == 0) break;
-        timeout.tv_sec = remaining_ms / 1000;
-        timeout.tv_usec = (remaining_ms % 1000) * 1000;
-        if (setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) break;
+    while (network_ready()) {
+        /* Idle connections stay open; only a partially received frame has a deadline. */
+        TickType_t wait_started = frame.length ? started : xTaskGetTickCount();
+        TickType_t timeout = pdMS_TO_TICKS(frame.length ? 5000 : 250);
+        int ready = wait_for_socket(sock, false, wait_started, timeout);
+        if (ready < 0) return;
+        if (ready == 0) {
+            if (frame.length) {
+                ESP_LOGW(TAG, "TCP frame timed out");
+                reply_to_backend(sock, false);
+                return;
+            }
+            continue;
+        }
         unsigned char byte;
-        int received = recv(client, &byte, 1, 0);
-        if (received < 0 && errno == EINTR) continue;
-        if (received != 1) break;
-        result = tcp_frame_feed(&frame, byte);
+        int received = recv(sock, &byte, 1, 0);
+        if (received < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+            continue;
+        if (received != 1) return;
+        if (!network_ready()) return;
+        if (frame.length == 0) started = xTaskGetTickCount();
+        tcp_frame_result_t result = tcp_frame_feed(&frame, byte);
+        if (result == TCP_FRAME_MORE) continue;
+        if (result == TCP_FRAME_INVALID) {
+            ESP_LOGW(TAG, "Invalid or oversized TCP frame; reconnecting");
+            reply_to_backend(sock, false);
+            return;
+        }
+        bool accepted = moveServoTo((int)frame.channel, (int)frame.angle) == ESP_OK;
+        if (!reply_to_backend(sock, accepted)) return;
+        frame = (tcp_frame_t){0};
     }
-    bool accepted = result == TCP_FRAME_VALID &&
-                    (xEventGroupGetBits(s_network_events) & IP_READY) &&
-                    lerp_to_servo_angle((int)frame.channel, (int)frame.angle) == ESP_OK;
-    reply_to_client(client, accepted);
 }
 
-static void tcp_server_task(void *arg)
+static void tcp_client_task(void *arg)
 {
     (void)arg;
+    struct sockaddr_in address = {
+        .sin_family = AF_INET,
+        .sin_port = htons(CONFIG_ROBOT_ARM_BACKEND_PORT),
+    };
+    if (inet_pton(AF_INET, CONFIG_ROBOT_ARM_BACKEND_IP, &address.sin_addr) != 1) {
+        ESP_LOGE(TAG, "TCP client disabled: configure ROBOT_ARM_BACKEND_IP with a valid IPv4 address");
+        s_client_task = NULL;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    unsigned retry_seconds = 1;
     for (;;) {
         xEventGroupWaitBits(s_network_events, IP_READY, pdFALSE, pdTRUE, portMAX_DELAY);
-        int listener = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-        if (listener < 0) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
+        xEventGroupClearBits(s_network_events, IP_LOST);
+        if (!network_ready()) continue;
+        int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        bool connected = sock >= 0 && connect_to_backend(sock, &address);
+        if (connected) {
+            retry_seconds = 1;
+            ESP_LOGI(TAG, "Connected to backend %s:%d", CONFIG_ROBOT_ARM_BACKEND_IP,
+                     CONFIG_ROBOT_ARM_BACKEND_PORT);
+            handle_backend(sock);
+            ESP_LOGW(TAG, "Backend connection closed; reconnecting");
+        } else {
+            ESP_LOGW(TAG, "Backend connection failed: errno %d", errno);
         }
-        int reuse = 1;
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-        struct sockaddr_in address = {
-            .sin_family = AF_INET,
-            .sin_port = htons(3333),
-            .sin_addr.s_addr = htonl(INADDR_ANY),
-        };
-        if (bind(listener, (struct sockaddr *)&address, sizeof(address)) < 0 ||
-            listen(listener, 1) < 0) {
-            ESP_LOGW(TAG, "TCP listener setup failed: errno %d", errno);
-            close(listener);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-        ESP_LOGI(TAG, "TCP listener ready on port 3333");
-        while (xEventGroupGetBits(s_network_events) & IP_READY) {
-            /* Poll readiness so a Wi-Fi disconnect never leaves accept blocked. */
-            fd_set readers;
-            FD_ZERO(&readers);
-            FD_SET(listener, &readers);
-            struct timeval poll_timeout = { .tv_sec = 1 };
-            int ready = select(listener + 1, &readers, NULL, NULL, &poll_timeout);
-            if (ready < 0 && errno == EINTR) continue;
-            if (ready < 0) break;
-            if (ready == 0) continue;
-            int client = accept(listener, NULL, NULL);
-            if (client < 0) break;
-            handle_client(client);
-            tcp_finish_response(client);
-            close(client);
-        }
-        close(listener);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        if (sock >= 0) close(sock);
+        ESP_LOGI(TAG, "Retrying backend connection in %u seconds", retry_seconds);
+        vTaskDelay(pdMS_TO_TICKS(retry_seconds * 1000));
+        if (!connected)
+            retry_seconds = retry_seconds < 16 ? retry_seconds * 2 : 30;
     }
 }
 
 esp_err_t tcp_socket_start(void)
 {
     if (!s_wifi_started) return ESP_ERR_INVALID_STATE;
-    if (s_server_task != NULL) return ESP_OK;
-    if (xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, &s_server_task) != pdPASS)
+    if (s_client_task != NULL) return ESP_OK;
+    if (xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, &s_client_task) != pdPASS)
         return ESP_ERR_NO_MEM;
     return ESP_OK;
 }

@@ -20,8 +20,8 @@
 #define SERVO_PERIOD_US       20000
 #define SERVO_MAX_ANGLE       180
 #define SERVO_MOVE_PERIOD_MS  20
-#define SERVO_DEFAULT_SPEED   30
 #define SERVO_MAX_SPEED      360
+#define SERVO_DEFAULT_SPEED  SERVO_MAX_SPEED
 #define SERVO_INITIAL_ANGLE   90
 #define SERVO_TASK_STACK      3072
 #define SERVO_TASK_PRIORITY   5
@@ -211,7 +211,7 @@ esp_err_t limit_speed(int degrees_per_second)
     return ESP_OK;
 }
 
-esp_err_t lerp_to_servo_angle(int servo, int destination_angle)
+esp_err_t moveServoTo(int servo, int destination_angle)
 {
     if (state_mutex == NULL || servo < 0 || servo > 15 ||
         destination_angle < 0 || destination_angle > SERVO_MAX_ANGLE) {

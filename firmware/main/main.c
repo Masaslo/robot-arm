@@ -89,7 +89,7 @@ static int command_lerp(int argc, char **argv)
         return 1;
     }
 
-    esp_err_t err = lerp_to_servo_angle((int)channel, (int)angle);
+    esp_err_t err = moveServoTo((int)channel, (int)angle);
     if (err != ESP_OK) {
         printf("Lerp starten mislukt: %s\n", esp_err_to_name(err));
         return 1;
