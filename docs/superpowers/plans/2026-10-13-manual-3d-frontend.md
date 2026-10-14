@@ -36,10 +36,10 @@
 - `buildPose(target,palmDeg,fingersDeg,config=ARM_CONFIG)` returns `{valid,modelAnglesDeg,servoAnglesDeg,canSend,error,blockedReason}`. Validate geometry/config/all six joint IDs/bounds/offsets/directions. Convert joints 0–3 using `offsetDeg + direction * modelAngle`. Sliders 4/5 already servo degrees. Validate unrounded values before rounding to nearest integer and validate rounded values. `valid` requires usable preview and bounds; `canSend` additionally requires `config.calibrated === true` and valid calibration. No silently clamped angles. Preserve model math precision; servo targets integers for compatibility with firmware.
 - `sendAngles(anglesDeg,{fetchImpl=globalThis.fetch,timeoutMs=15000}={})` returns `{message}` on 2xx and throws user-facing Error on validation/network/HTTP/timeout. Exactly keys 0–5, integer degrees 0–180, one POST JSON, no automatic retries. Handle empty/non-JSON success (including 204) and non-JSON errors. Clear abort timeout in all paths. No import-time effects.
 
-- [ ] Write meaningful tests first; watch red before implementing each boundary. Hand-derive known straight pose (upper+forearm+tool at X, shoulder height at Z), base yaw, bent target reconstruction, pitch sum, inner/outer reach, invalid geometry and origin singularity.
-- [ ] Test calibration offsets/directions/limits, invalid true-flag config, fractional out-of-range before rounding, manual slider values and default gate. Test API using a real local HTTP server via injected fetch URL wrapper where useful; assert actual received body and output/errors, 204/HTML/timeout and malformed payload.
-- [ ] Implement modules and npm setup with `type:module`, `dev/build/preview` Vite scripts and `test:node --test`; install compatible local Vite/Three.js and pin lockfile. Ignore node_modules and build asset directory, preserve tracked static entry for backend compatibility.
-- [ ] Run `npm test` from web; self-review and commit task-owned files. Report RED/GREEN evidence.
+- [x] Write meaningful tests first; watch red before implementing each boundary. Hand-derive known straight pose (upper+forearm+tool at X, shoulder height at Z), base yaw, bent target reconstruction, pitch sum, inner/outer reach, invalid geometry and origin singularity.
+- [x] Test calibration offsets/directions/limits, invalid true-flag config, fractional out-of-range before rounding, manual slider values and default gate. Test API using a real local HTTP server via injected fetch URL wrapper where useful; assert actual received body and output/errors, 204/HTML/timeout and malformed payload.
+- [x] Implement modules and npm setup with `type:module`, `dev/build/preview` Vite scripts and `test:node --test`; install compatible local Vite/Three.js and pin lockfile. Ignore node_modules and build asset directory, preserve tracked static entry for backend compatibility.
+- [x] Run `npm test` from web; self-review and commit task-owned files. Report RED/GREEN evidence.
 
 ### Task 2: Dedicated articulated Three.js graphic
 
@@ -49,9 +49,9 @@
 - `createArmModel(config=ARM_CONFIG)` from arm_model.js returns `{group,setPose(pose),endEffector,dispose()}`. No DOM/WebGL at import or model creation. Use Three.js hierarchy with hip Z yaw; shoulder/elbow/wrist local negative-Y rotation so positive math pitch points up. Upper/forearm/tool links extend local X. Shoulder height equals baseHeight. `endEffector` matches FK tip. Palm rolls around tool X from servo neutral offset/direction; fingers open by slider fraction along local Y without moving the mathematical tip. Basic shapes: substantial base, articulated links, round joints, palm, two jaws. Dark metal links and turquoise accents, no asset downloads.
 - `createRobotArmView(canvas,config=ARM_CONFIG)` from robot_arm.js returns `{setPose(pose),resize(),setActive(active),dispose()}`. Three WebGLRenderer, fixed perspective camera with Z-up, dark ground and subtle measuring grid, studio lighting. Render on demand; ResizeObserver handles container dimensions and DPR capped at 2; ignore hidden zero size and rerender on becoming active. Proper disposal of renderer, geometries/materials, observer, pending frames. Leave browser fallback handling to caller. No import-time DOM work.
 
-- [ ] Test first that actual Three.js joint hierarchy tip position agrees with hand-derived pose/FK for neutral and nonzero yaw/bends, and palm/fingers do not change IK target position. Verify independent grip movement from slider and no invalid pose mutation.
-- [ ] Implement arm_model and graphic modules, using exact Task 1 pose interface.
-- [ ] Run full frontend tests; self-review and commit task-owned files. Report browser-specific concerns; controller verifies WebGL visually after Task 3.
+- [x] Test first that actual Three.js joint hierarchy tip position agrees with hand-derived pose/FK for neutral and nonzero yaw/bends, and palm/fingers do not change IK target position. Verify independent grip movement from slider and no invalid pose mutation.
+- [x] Implement arm_model and graphic modules, using exact Task 1 pose interface.
+- [x] Run full frontend tests; self-review and commit task-owned files. Report browser-specific concerns; controller verifies WebGL visually after Task 3.
 
 ### Task 3: Manual app, Vite integration and design
 
@@ -68,6 +68,6 @@
 - Submit revalidates current pose and calibration, makes exactly one `sendAngles` call snapshot, disables relevant inputs/button during pending, uses aria-busy and live status; handles success/errors and allows correction/retry explicitly. Never claims physical motion completed. Never auto-send on controls/tabs/load. Default uncalibrated config blocks all network commands.
 - Document npm dev/test/build commands, build-before-Express workflow, geometry/offset/direction/min/max setup, source vs generated paths, and exact batch API contract for other backend chat. No backend endpoint implementation/fallback.
 
-- [ ] Implement UI and Vite integration using the approved style references. Use existing product/spec facts; no new approval questions.
-- [ ] Run frontend tests and build, backend tests from backend. Document any pre-existing failure accurately.
-- [ ] Check built artifact loading in browser via Vite and existing Express static root without contacting hardware; controller performs bounded screenshot/interactions pass. Commit task-owned files after self-review.
+- [x] Implement UI and Vite integration using the approved style references. Use existing product/spec facts; no new approval questions.
+- [x] Run frontend tests and build, backend tests from backend. Document any pre-existing failure accurately.
+- [x] Check built artifact loading in browser via Vite and existing Express static root without contacting hardware; controller performs bounded screenshot/interactions pass. Commit task-owned files after self-review.
