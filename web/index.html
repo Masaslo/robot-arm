@@ -23,43 +23,63 @@
       <main id="main-content" tabindex="-1">
         <section id="manual-panel" role="tabpanel" aria-labelledby="manual-tab" tabindex="0">
           <form id="manual-form" class="manual-workspace" novalidate aria-busy="false">
-            <section class="widget target-widget" aria-labelledby="target-heading">
-              <h2 id="target-heading">Doelpositie</h2>
-              <p class="widget-description" id="model-units">X, Y en Z in genormaliseerde modeleenheden.</p>
-              <div class="target-fields">
-                <label class="number-field" for="target-x"><span>X <span class="field-description">vooruit</span></span><input id="target-x" name="x" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
-                <label class="number-field" for="target-y"><span>Y <span class="field-description">zijwaarts</span></span><input id="target-y" name="y" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
-                <label class="number-field" for="target-z"><span>Z <span class="field-description">hoogte</span></span><input id="target-z" name="z" type="number" step="0.05" required aria-describedby="model-units pose-status"></label>
-                <label class="number-field pitch-field" for="tool-pitch"><span>Toolpitch <span class="field-description">graden</span></span><span class="input-with-unit"><input id="tool-pitch" name="toolPitchDeg" type="number" step="1" required aria-describedby="pose-status"><span aria-hidden="true">°</span></span></label>
-              </div>
-              <p class="pose-status" id="pose-status" aria-live="polite"></p>
-            </section>
+            <div class="target-controls">
+              <section class="widget target-widget" aria-labelledby="target-heading">
+                <h2 id="target-heading">Doelpositie</h2>
+                <p class="widget-description" id="model-units">X, Y en Z in genormaliseerde modeleenheden.</p>
+                <div class="target-fields">
+                  <label class="number-field" for="target-x"><span>X <span class="field-description">vooruit</span></span><input id="target-x" name="x" type="number" step="any" required aria-describedby="model-units pose-status"></label>
+                  <label class="number-field" for="target-y"><span>Y <span class="field-description">zijwaarts</span></span><input id="target-y" name="y" type="number" step="any" required aria-describedby="model-units pose-status"></label>
+                  <label class="number-field" for="target-z"><span>Z <span class="field-description">hoogte</span></span><input id="target-z" name="z" type="number" step="any" required aria-describedby="model-units pose-status"></label>
+                </div>
+                <p class="pose-status" id="pose-status" aria-live="polite"></p>
+              </section>
+              <section class="widget keyboard-widget" id="keyboard-widget" tabindex="-1" aria-labelledby="keyboard-heading" aria-describedby="keyboard-instructions">
+                <h2 id="keyboard-heading">Toetsenbord</h2>
+                <p class="widget-description">Beweeg het endpoint in de preview.</p>
+                <button class="keyboard-toggle" id="keyboard-toggle" type="button" aria-pressed="false" aria-controls="keyboard-keys" aria-describedby="keyboard-instructions" disabled>Bediening inschakelen</button>
+                <div class="direction-pad" id="keyboard-keys" role="group" aria-label="Endpoint bewegen">
+                  <button class="direction-key direction-w" type="button" data-move-key="KeyW" aria-label="Vooruit: X verhogen" title="Vooruit · X verhogen" disabled>W</button>
+                  <button class="direction-key direction-a" type="button" data-move-key="KeyA" aria-label="Links: Y verhogen" title="Links · Y verhogen" disabled>A</button>
+                  <button class="direction-key direction-s" type="button" data-move-key="KeyS" aria-label="Achteruit: X verlagen" title="Achteruit · X verlagen" disabled>S</button>
+                  <button class="direction-key direction-d" type="button" data-move-key="KeyD" aria-label="Rechts: Y verlagen" title="Rechts · Y verlagen" disabled>D</button>
+                  <button class="direction-key direction-shift" type="button" data-move-key="ShiftLeft" aria-label="Omlaag: Z verlagen" title="Omlaag · Z verlagen" disabled>Shift</button>
+                  <button class="direction-key direction-space" type="button" data-move-key="Space" aria-label="Omhoog: Z verhogen" title="Omhoog · Z verhogen" disabled>Space</button>
+                </div>
+                <p class="keyboard-instructions" id="keyboard-instructions">W/S vooruit/achteruit · A/D links/rechts.<br>Space omhoog · Shift omlaag.<br>Houd ingedrukt om te bewegen. Esc stopt.</p>
+                <div class="slider-field keyboard-speed">
+                  <label for="keyboard-speed"><span>Snelheid</span><output id="keyboard-speed-value" for="keyboard-speed">50%</output></label>
+                  <input id="keyboard-speed" type="range" min="10" max="100" step="10" value="50" disabled>
+                </div>
+                <p class="keyboard-status" id="keyboard-status" role="status">Bediening uit.</p>
+              </section>
+            </div>
             <figure class="arm-preview" aria-labelledby="scene-heading preview-label">
               <div class="scene-title"><h2 id="scene-heading">Voorbeeld in 3D</h2><span class="demo-badge">Demomodel</span></div>
-              <div class="canvas-container"><canvas id="arm-canvas" aria-label="3D-voorbeeld van de berekende robotarmpositie"></canvas><div id="preview-fallback" class="preview-fallback" hidden><h3>3D-weergave niet beschikbaar</h3><p>WebGL kon niet starten of is onderbroken. Herlaad de pagina in een browser met WebGL. Versturen is geblokkeerd.</p></div></div>
+              <div class="canvas-container"><canvas id="arm-canvas" aria-label="3D-voorbeeld van de actuele robotarmstand"></canvas><div id="preview-fallback" class="preview-fallback" hidden><h3>3D-weergave niet beschikbaar</h3><p>WebGL kon niet starten of is onderbroken. Herlaad de pagina in een browser met WebGL. Versturen is geblokkeerd.</p></div></div>
               <figcaption id="preview-label"></figcaption>
             </figure>
             <div class="servo-controls">
               <section class="widget angles-widget" aria-labelledby="angles-heading">
                 <div class="widget-title-row"><h2 id="angles-heading">Servohoeken</h2><span class="ik-badge">IK · 0–3</span></div>
-                <p class="widget-description" id="readouts-label">Servohoeken · kanalen 0–5</p>
+                <p class="widget-description" id="readouts-label">Servohoeken · servo-ID’s 0–5</p>
                 <dl class="angle-list" aria-describedby="readouts-label">
-                  <div><dt><span class="channel">0</span> Heup</dt><dd><output id="angle-0">—</output></dd></div>
-                  <div><dt><span class="channel">1</span> Schouder</dt><dd><output id="angle-1">—</output></dd></div>
-                  <div><dt><span class="channel">2</span> Elleboog</dt><dd><output id="angle-2">—</output></dd></div>
-                  <div><dt><span class="channel">3</span> Pols</dt><dd><output id="angle-3">—</output></dd></div>
-                  <div class="secondary-angle"><dt><span class="channel">4</span> Palm</dt><dd><output id="angle-4">—</output></dd></div>
-                  <div class="secondary-angle"><dt><span class="channel">5</span> Vingers</dt><dd><output id="angle-5">—</output></dd></div>
+                  <div><dt><span class="servo-id" data-servo-id="hip">0</span> Heup</dt><dd><output id="angle-hip">—</output></dd></div>
+                  <div><dt><span class="servo-id" data-servo-id="shoulder">1</span> Schouder</dt><dd><output id="angle-shoulder">—</output></dd></div>
+                  <div><dt><span class="servo-id" data-servo-id="elbow">2</span> Elleboog</dt><dd><output id="angle-elbow">—</output></dd></div>
+                  <div><dt><span class="servo-id" data-servo-id="wrist">3</span> Pols</dt><dd><output id="angle-wrist">—</output></dd></div>
+                  <div class="secondary-angle"><dt><span class="servo-id" data-servo-id="palm">4</span> Palm</dt><dd><output id="angle-palm">—</output></dd></div>
+                  <div class="secondary-angle"><dt><span class="servo-id" data-servo-id="fingers">5</span> Vingers</dt><dd><output id="angle-fingers">—</output></dd></div>
                 </dl>
               </section>
               <section class="widget hand-widget" aria-labelledby="hand-heading">
                 <h2 id="hand-heading">Palm &amp; vingers</h2>
-                <div class="slider-field"><label for="palm"><span>Palm <span class="channel">4</span></span><output for="palm" id="palmDeg-value">90°</output></label><input id="palm" name="palmDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="palmDeg">0°</span><span data-range-max="palmDeg">180°</span></div></div>
-                <div class="slider-field"><label for="fingers"><span>Vingers <span class="channel">5</span></span><output for="fingers" id="fingersDeg-value">90°</output></label><input id="fingers" name="fingersDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="fingersDeg">0°</span><span data-range-max="fingersDeg">180°</span></div></div>
+                <div class="slider-field"><label for="palm"><span>Palm <span class="servo-id">4</span></span><output for="palm" id="palmDeg-value">90°</output></label><input id="palm" name="palmDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="palmDeg">0°</span><span data-range-max="palmDeg">180°</span></div></div>
+                <div class="slider-field"><label for="fingers"><span>Vingers <span class="servo-id">5</span></span><output for="fingers" id="fingersDeg-value">90°</output></label><input id="fingers" name="fingersDeg" type="range" min="0" max="180" step="1"><div class="range-labels" aria-hidden="true"><span data-range-min="fingersDeg">0°</span><span data-range-max="fingersDeg">180°</span></div></div>
               </section>
               <div class="send-controls"><button class="send-button" type="submit" id="send-angles" disabled aria-describedby="calibration-status send-status">Send Angles<svg aria-hidden="true" viewBox="0 0 20 20"><path d="M3 10h13M11 5l5 5-5 5"/></svg></button><p class="send-status" id="send-status" role="status" aria-live="polite" aria-atomic="true"></p></div>
             </div>
-            <div class="workspace-note"><span class="status-dot" aria-hidden="true"></span><p id="calibration-status">Demomodel · versturen geblokkeerd tot de arm is gekalibreerd.</p></div>
+            <div class="workspace-note"><span class="status-dot" aria-hidden="true"></span><p id="calibration-status">Demomodel · Send Angles verstuurt de getoonde servohoeken.</p></div>
           </form>
         </section>
         <section id="automatic-panel" role="tabpanel" aria-labelledby="automatic-tab" tabindex="0" hidden>

@@ -3,7 +3,7 @@
 #include <string.h>
 #include "tcp_protocol.h"
 
-static void check(const char *s, tcp_frame_result_t expected, unsigned channel, unsigned angle)
+static void check(const char *s, tcp_frame_result_t expected, unsigned servo_id, unsigned angle)
 {
     tcp_frame_t frame = {0};
     tcp_frame_result_t result = TCP_FRAME_MORE;
@@ -11,16 +11,17 @@ static void check(const char *s, tcp_frame_result_t expected, unsigned channel, 
         result = tcp_frame_feed(&frame, (unsigned char)s[i]);
     assert(result == expected);
     if (result == TCP_FRAME_VALID) {
-        assert(frame.channel == channel);
+        assert(frame.servo_id == servo_id);
         assert(frame.angle == angle);
     }
 }
 int main(void)
 {
     check("0:0\n", TCP_FRAME_VALID, 0, 0);
-    check("15:180\n", TCP_FRAME_VALID, 15, 180);
-    check("07:090\n", TCP_FRAME_VALID, 7, 90);
-    check("16:90\n", TCP_FRAME_INVALID, 0, 0);
+    check("5:180\n", TCP_FRAME_VALID, 5, 180);
+    check("03:090\n", TCP_FRAME_VALID, 3, 90);
+    check("6:90\n", TCP_FRAME_INVALID, 0, 0);
+    check("15:180\n", TCP_FRAME_INVALID, 0, 0);
     check("1:181\n", TCP_FRAME_INVALID, 0, 0);
     check("-1:90\n", TCP_FRAME_INVALID, 0, 0);
     check("1:+90\n", TCP_FRAME_INVALID, 0, 0);

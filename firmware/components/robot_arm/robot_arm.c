@@ -9,6 +9,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "pca9685.h"
+#include "servo_config.h"
 
 #define I2C_PORT              I2C_NUM_0
 #define I2C_SDA_GPIO          21
@@ -20,8 +21,8 @@
 #define SERVO_PERIOD_US       20000
 #define SERVO_MAX_ANGLE       180
 #define SERVO_MOVE_PERIOD_MS  20
-#define SERVO_DEFAULT_SPEED   30
 #define SERVO_MAX_SPEED      360
+#define SERVO_DEFAULT_SPEED  SERVO_MAX_SPEED
 #define SERVO_INITIAL_ANGLE   90
 #define SERVO_TASK_STACK      3072
 #define SERVO_TASK_PRIORITY   5
@@ -167,8 +168,21 @@ static esp_err_t write_servo_angle(int servo, int angle)
         return err;
     }
 
+    int output_angle = angle;
+    const servo_config_t *config = servo_config_for_pca_channel((uint8_t)servo);
+    if (config != NULL) {
+        output_angle = SERVO_INITIAL_ANGLE +
+            config->direction * (angle - SERVO_INITIAL_ANGLE) +
+            config->offset_degrees;
+        if (output_angle < 0) {
+            output_angle = 0;
+        } else if (output_angle > SERVO_MAX_ANGLE) {
+            output_angle = SERVO_MAX_ANGLE;
+        }
+    }
+
     const uint32_t pulse_us = SERVO_MIN_PULSE_US +
-        ((uint32_t)angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US) +
+        ((uint32_t)output_angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US) +
          SERVO_MAX_ANGLE / 2) / SERVO_MAX_ANGLE;
     const uint32_t pwm_count =
         (pulse_us * 4096 + SERVO_PERIOD_US / 2) / SERVO_PERIOD_US;
@@ -211,9 +225,10 @@ esp_err_t limit_speed(int degrees_per_second)
     return ESP_OK;
 }
 
-esp_err_t lerp_to_servo_angle(int servo, int destination_angle)
+esp_err_t moveServoTo(servo_id_t servo_id, int destination_angle)
 {
-    if (state_mutex == NULL || servo < 0 || servo > 15 ||
+    const servo_config_t *config = servo_config_for_id(servo_id);
+    if (state_mutex == NULL || config == NULL ||
         destination_angle < 0 || destination_angle > SERVO_MAX_ANGLE) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -223,7 +238,7 @@ esp_err_t lerp_to_servo_angle(int servo, int destination_angle)
     }
     esp_err_t err = init_pca9685();
     if (err == ESP_OK) {
-        target_angle[servo] = (float)destination_angle;
+        target_angle[config->pca_channel] = (float)destination_angle;
     }
     xSemaphoreGive(state_mutex);
     return err;

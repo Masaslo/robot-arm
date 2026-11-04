@@ -24,7 +24,7 @@ The ESP32 handles real-time servo motion, motion limits, and safety. Computer vi
 
 The system is split into a web client, a host backend, and the ESP32 firmware:
 
-- **Web client (`web/`)** — Dutch Manual interface with XYZ/toolpitch inverse kinematics, a Three.js arm preview and Palm/Vingers sliders. Vite builds the client for Express; sending is blocked until real geometry and servo calibration are configured. Automatic is a future camera placeholder.
+- **Web client (`web/`)** — Dutch Manual interface with a Three.js arm preview, a named-joint API in radians, CCD position IK and Palm/Vingers sliders. Vite builds the client for Express; Send Angles transmits displayed setpoints with their configured servo IDs. Automatic is a future camera placeholder.
 - **Backend (`backend/`)** — Node.js/Express serves the web client and forwards validated servo targets to the ESP32 over TCP. OpenCV detection, inverse kinematics (pixel → world → joint angles), and the job/state interface remain planned.
 - **Firmware (`firmware/`)** — ESP-IDF and FreeRTOS C++ for servo joint control, motion interpolation, safety limits, and the arm state machine.
 
@@ -33,7 +33,7 @@ Planned data flow:
 - Camera → backend: **UDP** image frames.
 - Backend → firmware: **TCP** target joint positions and commands.
 - Firmware → backend: **TCP** state, joint summary, perception result, and abort/stop events.
-- Web client ↔ backend: same-origin HTTP JSON. The new Manual client expects one `POST /api/arm/angles` batch (backend implementation pending); the existing single-servo `POST /api/servo` API remains available.
+- Web client ↔ backend: same-origin HTTP JSON. The Manual client sends one `POST /api/arm/angles` batch; the backend validates all six targets and forwards their servo IDs sequentially. The single-servo `POST /api/servo` API also accepts a servo ID.
 
 The current manual-control message format is documented below. Camera transport and the future job/state messages still need to be specified.
 
@@ -79,12 +79,14 @@ The current firmware targets `esp32s3` (ESP32-S3). Confirm the exact physical bo
 ```sh
 cd firmware
 idf.py set-target esp32s3
-idf.py menuconfig # Robot arm network: configure Wi-Fi SSID and password
+# Set Wi-Fi and backend settings in components/tcp_socket/tcp_socket.c
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-Wi-Fi settings are stored in the local, Git-ignored `firmware/sdkconfig`. Configure them under **Robot arm network** in `idf.py menuconfig`; keep credentials out of committed defaults.
+Wi-Fi and backend settings are hardcoded at the top of `firmware/components/tcp_socket/tcp_socket.c`: `WIFI_SSID`, `WIFI_PASSWORD`, `BACKEND_IP` and `BACKEND_PORT`. The backend address is `192.168.2.36`, with TCP port `3333`. Use an IPv4 address without a subnet suffix such as `/24`. Rebuild and flash after changing these settings.
+
+The ESP32 initiates a persistent TCP connection after Wi-Fi obtains an IP address. Each connect attempt is limited to two seconds. Failed attempts use reconnect delays of 1, 2, 4, 8, 16, then 30 seconds (capped at 30); a successful connection resets the delay. Wi-Fi loss or a socket error closes the connection and returns the client to the IP wait/reconnect loop.
 
 ### Backend
 
@@ -94,11 +96,13 @@ Use Node.js 22.9.0 or newer:
 cd backend
 npm ci
 cp .env.example .env
-# Set ESP32_HOST in .env to the ESP32 address on your local network.
+# Optional: adjust FIRMWARE_PORT and HTTP PORT in .env.
 npm start
 ```
 
-`ESP32_HOST` is required. `ESP32_PORT` defaults to `3333`; `PORT` defaults to `3000`. Both ports must be integers from 1 to 65535. The sample address is illustrative; use the actual ESP32 address. Configuration is read at startup.
+`FIRMWARE_PORT` defaults to `3333`: the backend listens on all IPv4 interfaces (`0.0.0.0`) for the ESP32 to connect. `PORT` defaults to `3000` and is the separate HTTP listener for the browser/API. Both ports must be integers from 1 to 65535 and must be distinct. Configuration is read at startup.
+
+Set the firmware backend IP to this machine's LAN IPv4 address and its backend port to `FIRMWARE_PORT`. Allow inbound TCP on that port through the host firewall, and put the ESP32 and backend on a network where they can reach each other. Start the backend before sending commands; requests fail with HTTP `503` until the ESP32 connects.
 
 ### Web client
 
@@ -113,27 +117,27 @@ npm run build
 
 Start the backend as above, then open `http://localhost:3000` (or the host's address and configured port). Express serves the generated `web/static/index.html` and `/assets`. Source modules remain in `web/js`, and source styles in `web/style`; rebuild after changes. For development, run `npm run dev` in `web` and use the printed Vite URL. Its `/api` proxy targets `http://localhost:3000`.
 
-Manual previews a pose from X/Y/Z and toolpitch, with sliders for Palm and Vingers. Default geometry is a normalized demo; **Send Angles is blocked until calibration is configured**. The client sends one six-channel batch to `POST /api/arm/angles`; that endpoint must still be implemented separately. It does not fall back to six single-servo requests. See [web/README.md](web/README.md) for calibration, commands and the exact batch contract. The existing single-servo API below remains unchanged.
+Manual uses CCD inverse kinematics: it repeatedly rotates wrist, elbow and shoulder to move the actual arm tip towards an XYZ target, within servo limits. The arm is also controlled through `turnJoint(name, radians)`; Palm/Vingers sliders display servo degrees. Default geometry is a normalized demo; **Send Angles transmits the displayed servo setpoints using the current offsets, directions and limits**; the demo label remains until real calibration is configured. The client sends one six-servo-ID batch to `POST /api/arm/angles`. The backend validates the whole batch and forwards IDs 0–5 one by one, waiting for each firmware acknowledgement. Firmware maps each `servo_id_t` to its configured PCA9685 channel. A failure stops the batch; earlier targets may already be moving. This is not an atomic or synchronized firmware update. See [web/README.md](web/README.md) for calibration, commands and the exact batch contract. The single-servo API below also accepts a servo ID.
 
 ### Manual servo API and TCP protocol
 
 ```sh
 curl -X POST http://localhost:3000/api/servo \
   -H 'Content-Type: application/json' \
-  -d '{"servo":0,"angle":90}'
+  -d '{"servoId":0,"angle":90}'
 ```
 
-`servo` and `angle` must be JSON numbers and integers: channel `0–15`, angle `0–180`. Channels map directly to PCA9685 channels; there is no one-based joint numbering. Each valid HTTP request opens one TCP connection to the configured ESP32 and sends ASCII decimal `channel:angle` followed by a newline, for example `0:90\n` (the final byte is LF).
+`servoId` and `angle` must be JSON numbers and integers: servo ID `0–5`, angle `0–180`. Firmware maps the ID to its configured PCA9685 channel. Each valid HTTP request queues a command on the persistent socket opened by the ESP32. The backend sends ASCII decimal `servo-ID:angle` followed by a newline, for example `0:90\n` (the final byte is LF). Commands share one queue across both HTTP endpoints, with at most one command awaiting acknowledgement at a time.
 
-The firmware replies with `OK\n` when it accepts the target or `ERR\n` when it rejects it. Acknowledgements may arrive in fragments. Parsing stores at most four bytes, and the entire connection/acknowledgement has an absolute two-second deadline. The backend closes each connection after the result and does not retry automatically.
+The firmware replies with exactly one `OK\n` when it accepts a target or `ERR\n` when it rejects it. Acknowledgements may arrive in fragments. Parsing stores at most four bytes. Each command has an absolute two-second acknowledgement deadline starting after its socket write completes; time waiting in the queue is excluded. A valid `OK\n` or `ERR\n` leaves the connection open for subsequent commands. A malformed acknowledgement or timeout closes it; the ESP32 reconnects. A newly connected ESP32 replaces the previous connection and fails any pending or queued commands. Commands are never automatically retried or replayed after reconnecting. The ACK frames have no command IDs, so the backend cannot correlate a delayed duplicate valid acknowledgement that arrives only after it has sent the next command; the persistent protocol relies on the firmware's one-ACK-per-command behavior.
 
 | HTTP status | Meaning |
 | --- | --- |
 | `200` | Target accepted (`OK`); motion may still be underway. |
 | `400` | Invalid JSON, missing fields, wrong types, or out-of-range values. |
-| `503` | TCP connection or transport failure. |
+| `503` | No ESP32 connected, connection replaced or closed, or transport failure; queued commands also fail on disconnect. |
 | `504` | No complete acknowledgement before the deadline. |
-| `502` | Firmware rejection, malformed response, or connection closed without a complete acknowledgement. |
+| `502` | Firmware rejection (`ERR`) or malformed acknowledgement. |
 
 Responses are JSON with `message` on success or `error` on failure. A timeout or lost connection can occur after the target was accepted; check the arm before sending another target. Use this manual-control server on the trusted project network; authentication and coordinated motion jobs are future work.
 

@@ -1,3 +1,3 @@
-idf_component_register(SRCS "robot_arm.c"
+idf_component_register(SRCS "robot_arm.c" "servo_config.c"
                        INCLUDE_DIRS "include"
                        REQUIRES pca9685 esp_driver_i2c freertos log)

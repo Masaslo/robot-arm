@@ -5,5 +5,5 @@
 /** Start Wi-Fi in station mode and reconnect when the access point disconnects. */
 esp_err_t tcp_socket_wifi_init(void);
 
-/** Start the background TCP service after robot_arm_init() succeeds. */
+/** Start the reconnecting backend TCP client after Wi-Fi and robot arm initialization. */
 esp_err_t tcp_socket_start(void);

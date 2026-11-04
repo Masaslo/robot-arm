@@ -74,14 +74,15 @@ static int command_speed(int argc, char **argv)
 static int command_lerp(int argc, char **argv)
 {
     if (argc != 3) {
-        printf("Gebruik: lerp <kanaal 0-15> <doelhoek 0-180>\n");
+        printf("Gebruik: lerp <servo-ID 0-5> <doelhoek 0-180>\n");
         return 1;
     }
 
-    long channel;
+    long servo_id;
     long angle;
-    if (!parse_long(argv[1], 0, 15, &channel)) {
-        printf("Ongeldig kanaal. Gebruik een getal van 0 t/m 15.\n");
+    if (!parse_long(argv[1], 0, SERVO_COUNT - 1, &servo_id)) {
+        printf("Ongeldige servo-ID. Gebruik een getal van 0 t/m %d.\n",
+               SERVO_COUNT - 1);
         return 1;
     }
     if (!parse_long(argv[2], 0, 180, &angle)) {
@@ -89,12 +90,12 @@ static int command_lerp(int argc, char **argv)
         return 1;
     }
 
-    esp_err_t err = lerp_to_servo_angle((int)channel, (int)angle);
+    esp_err_t err = moveServoTo((servo_id_t)servo_id, (int)angle);
     if (err != ESP_OK) {
         printf("Lerp starten mislukt: %s\n", esp_err_to_name(err));
         return 1;
     }
-    printf("Servo %ld beweegt naar %ld graden.\n", channel, angle);
+    printf("Servo-ID %ld beweegt naar %ld graden.\n", servo_id, angle);
     return 0;
 }
 
@@ -103,7 +104,7 @@ void app_main(void)
     ESP_ERROR_CHECK(tcp_socket_wifi_init());
     ESP_ERROR_CHECK(robot_arm_init());
     ESP_ERROR_CHECK(tcp_socket_start());
-    printf("Commando's: servo <kanaal> <hoek>, speed <graden-per-seconde>, lerp <kanaal> <doelhoek>\n");
+    printf("Commando's: servo <kanaal> <hoek>, speed <graden-per-seconde>, lerp <servo-ID> <doelhoek>\n");
 
     const esp_console_cmd_t servo_command = {
         .command = "servo",
@@ -129,7 +130,7 @@ void app_main(void)
 
     const esp_console_cmd_t lerp_command = {
         .command = "lerp",
-        .help = "Beweeg een servo naar de doelhoek: lerp <kanaal 0-15> <hoek 0-180>",
+        .help = "Beweeg een servo-ID naar de doelhoek: lerp <servo-ID 0-5> <hoek 0-180>",
         .hint = NULL,
         .func = command_lerp,
         .argtable = NULL,

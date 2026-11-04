@@ -1,55 +1,115 @@
-import { ARM_CONFIG, INITIAL_TARGET, INITIAL_PALM_DEG, INITIAL_FINGERS_DEG } from './joint_config.js';
-import { buildPose } from './pose.js';
+import { createRobotArm, toRadians } from './robot_arm.js';
+import { solveIK, IK_COMPLETE } from './inverse_kinematics.js';
 import { sendAngles } from './api.js';
-import { createRobotArmView } from './robot_arm.js';
+import { mountKeyboardControl } from './keyboard_control.js';
 
-const fieldNames = ['x', 'y', 'z', 'toolPitchDeg', 'palmDeg', 'fingersDeg'];
+const initialTarget = { x: 1.3, y: 0, z: 1.1 };
+const targetFields = ['x', 'y', 'z'];
+const fieldNames = [...targetFields, 'palmDeg', 'fingersDeg'];
+const handFields = { palmDeg: 'palm', fingersDeg: 'fingers' };
 
-function poseFromFields(fields, config) {
-  const numbers = {};
-  for (const name of fieldNames) {
+function readFields(readValues) {
+  const fields = readValues();
+  return Object.fromEntries(fieldNames.map(name => {
     const raw = fields[name];
-    if ((typeof raw !== 'string' && typeof raw !== 'number') || String(raw).trim() === '' || !Number.isFinite(Number(raw))) {
-      return { valid: false, canSend: false, error: 'Vul alle velden in met geldige getallen.', servoAnglesDeg: null };
+    if (!['string', 'number'].includes(typeof raw) || String(raw).trim() === '' || !Number.isFinite(Number(raw))) {
+      throw new Error('Vul alle velden in met geldige getallen.');
     }
-    numbers[name] = Number(raw);
-  }
-  return buildPose({ x: numbers.x, y: numbers.y, z: numbers.z, toolPitchDeg: numbers.toolPitchDeg },
-    numbers.palmDeg, numbers.fingersDeg, config);
+    return [name, Number(raw)];
+  }));
 }
 
-/** Owns validation and transmission state; only an explicit submit can send. */
-export function createManualController({ readValues, config = ARM_CONFIG, send = sendAngles, onChange = () => {} }) {
-  let state = { pose: null, lastValidPose: null, pending: false, previewReady: true, feedback: null, canSend: false };
-  function publish() {
-    state.canSend = Boolean(state.pose?.canSend && state.previewReady && !state.pending);
-    onChange(state);
+function handAngle(arm, name, degrees) {
+  const joint = arm.joints[name];
+  return toRadians((degrees - joint.offset) / joint.direction);
+}
+
+/** Form status only. All joint angles live in the arm, including direct code edits. */
+export function createManualController({ arm, readValues, send = sendAngles, onChange = () => {}, ikComplete = IK_COMPLETE }) {
+  const state = { valid: false, error: null, plane: null, pending: false, feedback: null, canSend: false, blockedReason: null };
+  let appliedTarget = null;
+  let updating = false;
+  let disposed = false;
+
+  function publish({ syncHand = state.valid } = {}) {
+    state.blockedReason = !state.valid ? state.error : !arm.previewReady ?
+      '3D-weergave niet beschikbaar. Herlaad de pagina voordat je verstuurt.' : !ikComplete ?
+      'De IK is nog niet volledig uitgewerkt. Werk de IK uit voordat je verstuurt.' : null;
+    state.canSend = !disposed && !state.pending && state.blockedReason === null;
+    onChange(state, { syncHand });
   }
-  function evaluate() {
-    state.pose = poseFromFields(readValues(), config);
-    if (state.pose.valid) state.lastValidPose = state.pose;
-  }
-  function update() {
-    if (state.pending) return;
+
+  // A slider changes just that joint; target edits apply IK and the hand together.
+  function update(field = null) {
+    if (disposed || state.pending) return;
+    updating = true;
     state.feedback = null;
-    evaluate();
-    publish();
+    try {
+      const values = readFields(readValues);
+      const targetChanged = !appliedTarget || targetFields.some(name => values[name] !== appliedTarget[name]);
+      if (handFields[field] && !targetChanged) {
+        const name = handFields[field];
+        arm.turnJoint(name, handAngle(arm, name, values[field]));
+      } else {
+        const target = { x: values.x, y: values.y, z: values.z };
+        state.plane = solveIK(arm, target, {
+          palm: handAngle(arm, 'palm', values.palmDeg),
+          fingers: handAngle(arm, 'fingers', values.fingersDeg),
+        });
+        appliedTarget = Object.fromEntries(targetFields.map(name => [name, values[name]]));
+      }
+      state.valid = true;
+      state.error = null;
+    } catch (error) {
+      state.valid = false;
+      state.error = error.message;
+    } finally {
+      updating = false;
+      publish();
+    }
   }
-  function setPreviewReady(ready) {
-    state.previewReady = Boolean(ready);
-    state.feedback = null;
+
+  /** Verplaats het doel zonder een onbereikbare stap in de bediening toe te passen. */
+  function moveTarget(delta) {
+    if (disposed || state.pending || !state.valid || !arm.previewReady) {
+      throw new Error('De arm is momenteel niet beschikbaar voor toetsenbordbediening.');
+    }
+    const values = readFields(readValues);
+    const next = Object.fromEntries(targetFields.map(name =>
+      [name, Number((values[name] + delta[name]).toFixed(5))]));
+    updating = true;
+    try {
+      state.plane = solveIK(arm, next);
+      appliedTarget = next;
+      state.feedback = null;
+    } finally {
+      updating = false;
+    }
     publish();
+    return next;
   }
+
   async function submit() {
-    if (state.pending) return;
-    evaluate();
-    if (!state.pose.canSend || !state.previewReady) {
-      state.feedback = { kind: 'error', message: !state.previewReady ? '3D-weergave niet beschikbaar. Herlaad de pagina voordat je verstuurt.' :
-        state.pose.error || state.pose.blockedReason };
+    if (disposed || state.pending) return;
+    let snapshot;
+    try {
+      const values = readFields(readValues);
+      // Detect edits without an input event, but never rerun IK or overwrite the arm.
+      snapshot = arm.getServoAngles();
+      if (!appliedTarget || targetFields.some(name => values[name] !== appliedTarget[name]) ||
+          Object.entries(handFields).some(([field, name]) => values[field] !== snapshot[arm.joints[name].servoId])) {
+        throw new Error('De invoer is gewijzigd. Pas de bediening aan voordat je verstuurt.');
+      }
+    } catch (error) {
+      state.valid = false;
+      state.error = error.message;
+    }
+    publish();
+    if (!state.canSend) {
+      state.feedback = { kind: 'error', message: state.blockedReason };
       publish();
       return;
     }
-    const snapshot = { ...state.pose.servoAnglesDeg };
     state.pending = true;
     state.feedback = { kind: 'pending', message: 'Hoeken versturen… Wacht op antwoord van de backend.' };
     publish();
@@ -60,99 +120,98 @@ export function createManualController({ readValues, config = ARM_CONFIG, send =
       state.feedback = { kind: 'error', message: `${error instanceof Error ? error.message : 'Versturen mislukt.'} Controleer de verbinding en probeer opnieuw.` };
     } finally {
       state.pending = false;
-      publish();
+      if (!disposed) publish();
     }
   }
-  evaluate();
-  publish();
-  return { get state() { return state; }, update, submit, setPreviewReady };
+
+  const unsubscribe = arm.onChange(() => {
+    if (!updating && !disposed) {
+      if (!state.pending) state.feedback = null;
+      publish({ syncHand: true });
+    }
+  });
+  update();
+  return { state, update, moveTarget, submit, dispose() { disposed = true; unsubscribe(); } };
 }
 
-export function mountManual(root, config = ARM_CONFIG) {
+/** Connect the page to one arm. The returned arm is also usable from your own code. */
+export function mountManual(root) {
   const form = root.querySelector('#manual-form');
   const inputs = Object.fromEntries(fieldNames.map(name => [name, form.elements.namedItem(name)]));
-  const button = form.querySelector('#send-angles');
-  const feedback = root.querySelector('#send-status');
-  const poseStatus = root.querySelector('#pose-status');
-  const previewLabel = root.querySelector('#preview-label');
-  const calibration = root.querySelector('#calibration-status');
-  const readoutsLabel = root.querySelector('#readouts-label');
-  const fallback = root.querySelector('#preview-fallback');
+  const button = root.querySelector('#send-angles');
   const canvas = root.querySelector('#arm-canvas');
-  let view = null;
-  let drawnPose = null;
-
-  for (const [name, value] of Object.entries({ ...INITIAL_TARGET, palmDeg: INITIAL_PALM_DEG, fingersDeg: INITIAL_FINGERS_DEG })) {
-    inputs[name].value = value;
+  const arm = createRobotArm(canvas);
+  let keyboard = null;
+  const hand = arm.getServoAngles();
+  for (const [name, value] of Object.entries({ ...initialTarget,
+    palmDeg: hand[arm.joints.palm.servoId], fingersDeg: hand[arm.joints.fingers.servoId] })) inputs[name].value = value;
+  for (const [field, name] of Object.entries(handFields)) {
+    inputs[field].min = Math.ceil(arm.joints[name].min);
+    inputs[field].max = Math.floor(arm.joints[name].max);
+    root.querySelector(`[data-range-min="${field}"]`).textContent = `${inputs[field].min}°`;
+    root.querySelector(`[data-range-max="${field}"]`).textContent = `${inputs[field].max}°`;
+  }
+  for (const [name, joint] of Object.entries(arm.joints)) {
+    root.querySelector(`[data-servo-id="${name}"]`).textContent = joint.servoId;
   }
 
-  // Sliders represent physical servo commands, constrained by their calibrated limits.
-  for (const [name, id] of [['palmDeg', 4], ['fingersDeg', 5]]) {
-    const joint = config.joints?.find(joint => joint.id === id);
-    if (joint && Number.isFinite(joint.minDeg) && Number.isFinite(joint.maxDeg)) {
-      inputs[name].min = joint.minDeg;
-      inputs[name].max = joint.maxDeg;
-    }
-    root.querySelector(`[data-range-min="${name}"]`).textContent = `${inputs[name].min}°`;
-    root.querySelector(`[data-range-max="${name}"]`).textContent = `${inputs[name].max}°`;
-  }
-  try { view = createRobotArmView(canvas, config); } catch {
-    canvas.hidden = true;
-    fallback.hidden = false;
-  }
-
-  function render(state) {
+  function render(state, { syncHand }) {
+    const servoAngles = arm.getServoAngles();
     form.setAttribute('aria-busy', String(state.pending));
     for (const input of Object.values(inputs)) input.disabled = state.pending;
     button.disabled = !state.canSend;
     button.textContent = state.pending ? 'Versturen…' : 'Send Angles';
-    calibration.textContent = config.calibrated === true ? 'Kalibratie actief · controleer de vrije werkruimte.' :
-      'Demomodel · versturen geblokkeerd tot de arm is gekalibreerd.';
-    const hasPreview = Boolean(state.lastValidPose && state.previewReady);
-    poseStatus.textContent = !state.previewReady ? '3D-weergave niet beschikbaar. Versturen is geblokkeerd.' :
-      state.pose.valid ? 'Doel berekend. De weergave toont de berekende pose.' : state.pose.error;
-    poseStatus.dataset.kind = state.pose.valid ? 'valid' : 'error';
-    for (const name of ['x', 'y', 'z', 'toolPitchDeg']) {
-      inputs[name].setAttribute('aria-invalid', String(!state.pose.valid));
+    canvas.hidden = !arm.previewReady;
+    root.querySelector('#preview-fallback').hidden = arm.previewReady;
+    root.querySelector('#calibration-status').textContent = arm.calibrated ?
+      'Kalibratie actief · controleer de vrije werkruimte.' : 'Demomodel · Send Angles verstuurt de getoonde servohoeken.';
+    const poseStatus = root.querySelector('#pose-status');
+    const poseMessage = !arm.previewReady ? '3D-weergave niet beschikbaar. Versturen is geblokkeerd.' :
+      !state.valid ? state.error : IK_COMPLETE ? 'De weergave toont de actuele armstand.' :
+        'De inverse kinematics is nog in opbouw.';
+    if (poseStatus.textContent !== poseMessage) poseStatus.textContent = poseMessage;
+    poseStatus.dataset.kind = state.valid ? 'valid' : 'error';
+    for (const name of fieldNames) inputs[name].setAttribute('aria-invalid', String(!state.valid));
+    root.querySelector('#preview-label').textContent = !arm.previewReady ? '3D niet beschikbaar' :
+      !state.valid ? 'Actuele armstand · ongeldige invoer niet toegepast' :
+        IK_COMPLETE ? 'Actuele armstand' : 'Actuele armstand · IK in opbouw';
+    root.querySelector('.demo-badge').textContent = arm.calibrated ? 'Gekalibreerd' : 'Demomodel';
+    root.querySelector('#readouts-label').textContent = 'Servohoeken van de actuele armstand';
+    for (const [name, joint] of Object.entries(arm.joints)) {
+      root.querySelector(`#angle-${name}`).value = `${servoAngles[joint.servoId]}°`;
     }
-    previewLabel.textContent = !state.previewReady ? '3D niet beschikbaar' : !state.pose.valid ?
-      (hasPreview ? 'Laatste geldige pose · huidig doel niet toegepast' : 'Nog geen geldige pose') :
-      config.calibrated === true ? 'Berekende pose · gekalibreerd model' : 'Berekende pose · demogeometrie';
-    root.querySelector('.demo-badge').textContent = config.calibrated === true ? 'Gekalibreerd' : 'Demomodel';
-    readoutsLabel.textContent = state.pose.valid ? 'Servohoeken · kanalen 0–5' : 'Laatste geldige servohoeken · huidig doel niet toegepast';
-    for (const joint of config.joints ?? []) {
-      const output = root.querySelector(`#angle-${joint.id}`);
-      if (output) output.value = state.lastValidPose ? `${state.lastValidPose.servoAnglesDeg[joint.id]}°` : '—';
-    }
-    for (const name of ['palmDeg', 'fingersDeg']) {
-      const input = inputs[name];
-      root.querySelector(`#${name}-value`).value = `${input.value}°`;
+    for (const [field, name] of Object.entries(handFields)) {
+      const input = inputs[field];
+      if (syncHand) input.value = servoAngles[arm.joints[name].servoId];
+      root.querySelector(`#${field}-value`).value = `${input.value}°`;
       const extent = Number(input.max) - Number(input.min);
       input.style.setProperty('--slider-fill', `${extent > 0 ? (Number(input.value) - Number(input.min)) / extent * 100 : 0}%`);
     }
-    feedback.textContent = state.feedback?.message ?? (state.pose.valid ? state.pose.blockedReason ?? 'Klaar om de zes servohoeken te versturen.' : 'Pas het doel aan om opnieuw te berekenen.');
+    const feedback = root.querySelector('#send-status');
+    const feedbackMessage = state.feedback?.message ?? state.blockedReason ?? 'Klaar om de actuele servohoeken te versturen.';
+    if (feedback.textContent !== feedbackMessage) feedback.textContent = feedbackMessage;
     feedback.dataset.kind = state.feedback?.kind ?? 'info';
-    if (view && state.lastValidPose && state.lastValidPose !== drawnPose) {
-      view.setPose(state.lastValidPose);
-      drawnPose = state.lastValidPose;
-    }
+    keyboard?.setAvailable(!state.pending && arm.previewReady && state.valid,
+      state.pending ? 'Wacht tot de hoeken zijn verstuurd.' :
+        !arm.previewReady ? '3D-weergave niet beschikbaar.' : 'Vul eerst een geldige doelpositie in.');
   }
-  const controller = createManualController({ readValues: () => Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value])), config, onChange: render });
-  if (!view) controller.setPreviewReady(false);
-  const onInput = () => controller.update();
+
+  const controller = createManualController({ arm, onChange: render,
+    readValues: () => Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value])) });
+  keyboard = mountKeyboardControl(root.querySelector('#keyboard-widget'), delta => {
+    const next = controller.moveTarget(delta);
+    for (const name of targetFields) inputs[name].value = next[name];
+  });
+  render(controller.state, { syncHand: true });
+  const onInput = event => { if (fieldNames.includes(event.target.name)) controller.update(event.target.name); };
   const onSubmit = event => { event.preventDefault(); void controller.submit(); };
   form.addEventListener('input', onInput);
   form.addEventListener('submit', onSubmit);
-  // Context loss can happen after a successful initial WebGL setup.
-  canvas.addEventListener('webglcontextlost', () => {
-    view?.setActive(false);
-    canvas.hidden = true;
-    fallback.hidden = false;
-    controller.setPreviewReady(false);
-  });
-  return { setActive: active => view?.setActive(active), dispose: () => {
+  return { arm, setActive: active => { arm.setActive(active); keyboard.setActive(active); }, dispose() {
     form.removeEventListener('input', onInput);
     form.removeEventListener('submit', onSubmit);
-    view?.dispose();
+    keyboard.dispose();
+    controller.dispose();
+    arm.dispose();
   } };
 }

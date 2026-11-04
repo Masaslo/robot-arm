@@ -1,10 +1,10 @@
-const channelIds = ['0', '1', '2', '3', '4', '5'];
+const servoIds = ['0', '1', '2', '3', '4', '5'];
 
 export async function sendAngles(anglesDeg, { fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
   if (!anglesDeg || typeof anglesDeg !== 'object' || Array.isArray(anglesDeg) ||
-      Reflect.ownKeys(anglesDeg).length !== 6 || !channelIds.every(id =>
+      Reflect.ownKeys(anglesDeg).length !== 6 || !servoIds.every(id =>
         Object.hasOwn(anglesDeg, id) && Number.isInteger(anglesDeg[id]) && anglesDeg[id] >= 0 && anglesDeg[id] <= 180)) {
-    throw new Error('Geef precies zes kanalen (0–5) met gehele hoeken van 0–180° op.');
+    throw new Error('Geef precies zes servo-ID’s (0–5) met gehele hoeken van 0–180° op.');
   }
   if (typeof fetchImpl !== 'function') throw new Error('Deze browser kan geen verbinding met de arm maken.');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647) {

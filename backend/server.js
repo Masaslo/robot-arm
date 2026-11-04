@@ -1,4 +1,6 @@
+import {createServer} from 'node:http';
 import {createApp} from './app.js';
+import {createFirmwareLink} from './firmware_link.js';
 
 function portValue(value, fallback, name) {
   const port = value === undefined ? fallback : Number(value);
@@ -6,5 +8,17 @@ function portValue(value, fallback, name) {
   return port;
 }
 const port = portValue(process.env.PORT, 3000, 'PORT');
-const app = createApp({host: process.env.ESP32_HOST, port: portValue(process.env.ESP32_PORT, 3333, 'ESP32_PORT')});
-app.listen(port, () => console.log(`Robot arm: http://localhost:${port}`));
+const firmwarePort = portValue(process.env.FIRMWARE_PORT, 3333, 'FIRMWARE_PORT');
+const {server: firmwareServer, sendTarget} = createFirmwareLink();
+const httpServer = createServer(createApp({sendTarget}));
+
+function failStartup(listener, error) {
+  console.error(`Cannot start ${listener} listener: ${error.message}`);
+  process.exit(1);
+}
+firmwareServer.on('error', error => failStartup(`firmware TCP on 0.0.0.0:${firmwarePort}`, error));
+httpServer.on('error', error => failStartup(`HTTP on port ${port}`, error));
+firmwareServer.listen(firmwarePort, '0.0.0.0', () => {
+  console.log(`Firmware TCP: 0.0.0.0:${firmwarePort}`);
+  httpServer.listen(port, () => console.log(`Robot arm: http://localhost:${port}`));
+});

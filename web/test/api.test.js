@@ -24,7 +24,7 @@ async function endpoint(t, respond) {
 }
 
 // Catches wrong endpoint, payload shape, non-JSON requests, or duplicate sends.
-test('sends exactly one JSON batch with all six integer channels', async t => {
+test('sends exactly one JSON batch with all six integer servo IDs', async t => {
   const api = await endpoint(t, (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ message: 'Doel geaccepteerd.' }));
@@ -42,7 +42,7 @@ test('rejects malformed payloads before any HTTP request', async t => {
   for (const invalid of [null, [], {}, { ...angles, 6: 0 }, { ...angles, 5: undefined },
     { ...angles, 5: 180.1 }, { ...angles, 5: -1 }, { ...angles, 5: '90' },
     { ...angles, 5: NaN }, { ...angles, 5: Infinity }]) {
-    await assert.rejects(sendAngles(invalid, api), /zes|hoek|kanaal/i);
+    await assert.rejects(sendAngles(invalid, api), /zes|hoek|servo-ID/i);
   }
   assert.equal(api.requests.length, 0);
 });

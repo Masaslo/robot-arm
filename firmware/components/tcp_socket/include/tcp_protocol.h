@@ -1,10 +1,11 @@
 #pragma once
 #include <stddef.h>
+#include "servo_id.h"
 
 typedef enum { TCP_FRAME_MORE, TCP_FRAME_VALID, TCP_FRAME_INVALID } tcp_frame_result_t;
 typedef struct {
     size_t length;
-    unsigned channel;
+    unsigned servo_id;
     unsigned angle;
     unsigned digits;
     unsigned separator;
