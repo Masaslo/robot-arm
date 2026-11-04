@@ -67,7 +67,7 @@ export function createFirmwareLink({ackTimeoutMs = 2000} = {}) {
         pump();
       } else if (!ok.subarray(0, buffer.length).equals(buffer) &&
                  !err.subarray(0, buffer.length).equals(buffer)) {
-        disconnect(connection, linkError(502, 'Ongeldige bevestiging van de ESP32.'));
+        disconnect(connection, linkError(502, 'De ESP32 heeft het doel geweigerd of ongeldig bevestigd.'));
       }
     });
   });

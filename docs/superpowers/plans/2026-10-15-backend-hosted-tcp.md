@@ -17,7 +17,7 @@
 - Firmware configuration supplies the backend IPv4 address and TCP port; do not commit the user's actual LAN IP.
 - Keep the command and acknowledgement frames `channel:angle\n`, `OK\n`, and `ERR\n`.
 - Serialize HTTP commands; wait up to two seconds for each acknowledgement after sending it.
-- Do not retry uncertain commands. Preserve HTTP 503 for unavailable/transport failures, 502 for rejection or malformed acknowledgement, and 504 for acknowledgement timeout. Close the socket after malformed data or acknowledgement timeout so a late reply cannot be paired with a later command.
+- Do not retry uncertain commands. Preserve HTTP 503 for unavailable/transport failures, 502 for rejection or malformed acknowledgement, and 504 for acknowledgement timeout. Close the socket after malformed data or acknowledgement timeout so a late reply from a failed exchange cannot be paired with a later command. The unchanged `OK\n` / `ERR\n` frames have no command IDs: compliant firmware must send exactly one ACK per command, and a delayed duplicate valid ACK arriving after the next command is sent cannot be distinguished from that command's reply.
 - A new firmware connection replaces a stale active connection; keep only one active arm connection.
 - Rename the firmware motion entry point to `moveServoTo` and set its default software speed to 360 degrees per second, the current maximum. The 20 ms interpolation task and physical servo response mean motion is fast but not literally instantaneous.
 - Preserve existing local changes, including the uncommitted `/api/arm/angles` route.
@@ -26,7 +26,7 @@
 
 ## Review Focus
 
-- Fragmented, malformed, or surplus acknowledgement bytes must not acknowledge the wrong command; inspect the bounded parser and socket-close path.
+- Fragmented acknowledgements must be assembled exactly. Reject malformed data, excess bytes in the current response, and ACK data received while no command is pending. The protocol has no ACK IDs, so a delayed duplicate valid `OK\n` / `ERR\n` arriving after the next command is sent cannot be identified; explicitly rely on the firmware contract of exactly one ACK per command rather than claiming protection against that case.
 - Disconnect during an in-flight or queued command must reject affected HTTP requests without retrying; inspect queue cleanup and error mapping.
 - HTTP requests before the ESP32 connects must return 503; inspect initial link state handling.
 - A reconnect must replace the old socket and restore command delivery; inspect active-socket ownership and backoff reset.
@@ -50,7 +50,7 @@
 
 - [ ] **Step 1: Implement the connection manager in `backend/firmware_link.js`**
 
-  Create a TCP listener, track one active socket, replace and close the previous socket when a new one connects, and process commands through a FIFO queue. Reject immediately with status 503 when no socket is available. If an active socket closes, reject its in-flight and queued commands with status 503. Start a two-second acknowledgement deadline only after a command is written. Parse fragmented replies while accepting only exactly `OK\n` and `ERR\n`; map a firmware rejection to 502, timeout to 504, and socket loss to 503. Do not automatically retry. Close the active socket after malformed data or an acknowledgement timeout, then fail queued requests with 503; this prevents a late acknowledgement from being matched to a later command.
+  Create a TCP listener, track one active socket, replace and close the previous socket when a new one connects, and process commands through a FIFO queue. Reject immediately with status 503 when no socket is available. If an active socket closes, reject its in-flight and queued commands with status 503. Start a two-second acknowledgement deadline only after a command is written. Parse fragmented replies while accepting only exactly `OK\n` and `ERR\n`; map a firmware rejection to 502, timeout to 504, and socket loss to 503. Do not automatically retry. Close the active socket after malformed data or an acknowledgement timeout, then fail queued requests with 503; this prevents replies from those failed exchanges from being matched to later commands. The unnumbered protocol relies on compliant firmware sending exactly one ACK per command; a delayed duplicate valid ACK arriving after the next command is sent cannot be distinguished from its reply.
 
 - [ ] **Step 2: Route existing HTTP handlers through the injected link**
 

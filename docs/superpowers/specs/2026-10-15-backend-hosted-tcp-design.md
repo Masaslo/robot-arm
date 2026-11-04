@@ -21,14 +21,14 @@ Make the JavaScript backend the TCP listener for servo control. The ESP32 joins 
 2. The ESP32 waits until Wi-Fi has an IP address, then connects to the backend IPv4 address and configured TCP port. Its Kconfig settings provide the backend address and port; the address is not hard-coded because the actual host IP is environment-specific.
 3. The TCP connection stays open. Both sides keep the existing newline-framed protocol: the backend sends `channel:angle\n`, and the ESP32 replies `OK\n` or `ERR\n` for each command. The ESP32 resets its bounded parser after each complete command and continues reading frames on the same socket.
 4. For a valid command, the ESP32 calls `moveServoTo`. Set the default movement speed to 360 degrees per second, the existing maximum software speed. Motion remains interpolated at the firmware's 20 ms update interval and is not physically instantaneous.
-5. The backend serializes commands from concurrent HTTP requests so each acknowledgement belongs to the command at the head of the queue. `POST /api/servo` and `POST /api/arm/angles` keep their current validation and response contracts.
+5. The backend serializes commands from concurrent HTTP requests and accepts one acknowledgement for the command at the head of the queue. The unchanged, unnumbered wire protocol relies on compliant firmware sending exactly one `OK\n` or `ERR\n` per command. `POST /api/servo` and `POST /api/arm/angles` keep their current validation and response contracts.
 6. If the connection drops, the ESP32 closes its socket and reconnects with bounded backoff. A newly accepted firmware connection replaces any stale active connection.
 
 ## Failure handling
 
 - Requests received before a firmware connection is available return HTTP 503.
 - A disconnect or socket error during a command returns HTTP 503. The backend does not retry a command because the firmware may have accepted it before the connection failed.
-- A firmware `ERR` returns HTTP 502 and leaves the aligned connection open. A malformed acknowledgement returns HTTP 502 and closes the connection so leftover bytes cannot be mistaken for a later acknowledgement.
+- A firmware `ERR` returns HTTP 502 and leaves the aligned connection open. A malformed acknowledgement or excess acknowledgement bytes observed while parsing the current response return HTTP 502 and close the connection. The backend rejects unexpected bytes when no command is pending and rejects multiple acknowledgements coalesced into one bounded response. Since ACKs have no command identifier, a delayed duplicate valid `OK\n` or `ERR\n` arriving only after the next command is sent cannot be distinguished from that command's reply; correct operation therefore relies on the firmware's one-ACK-per-command contract.
 - If no complete acknowledgement arrives within the existing two-second deadline, the request returns HTTP 504 and the backend closes that TCP connection. Closing it prevents a late acknowledgement from being mistaken for a later command; the ESP32 reconnects, and queued commands fail with HTTP 503 rather than being retried.
 - A batch stops at the first failed command. Earlier channel targets may already have been accepted, matching the current API behavior.
 
@@ -54,4 +54,5 @@ The checked-in firmware configuration targets ESP32-S3, but the physical board r
 - The connection persists and the ESP32 reconnects after loss.
 - The existing command and acknowledgement frames are reused.
 - HTTP commands are serialized and await their matching acknowledgement.
+- Compliant firmware emits exactly one acknowledgement per command. Because ACK frames have no IDs, an extra valid ACK arriving after the next command is sent cannot be correlated safely; no absolute protection against that delayed-duplicate case is claimed.
 - Existing backend changes and unrelated workspace edits are preserved.
