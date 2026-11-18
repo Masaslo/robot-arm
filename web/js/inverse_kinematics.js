@@ -72,28 +72,28 @@ export function projectToArmPlane(target, baseHeight) {
   return plane;
 }
 
-/** Stap 1: richt de lijn van pols naar arm-tip naar het doel. */
+// Stap 1: richt de lijn van pols naar arm-tip naar het doel.
 export function solveWrist(targetPoint, dimensions, joint) {
   const points = getArmPoints(dimensions);
   const rotation = calculateRotation(points.wrist, points.end, targetPoint);
   wrist = limitAngle(wrist + rotation, joint);
 }
 
-/** Stap 2: richt de lijn van elleboog naar arm-tip naar het doel. */
+// Stap 2: richt de lijn van elleboog naar arm-tip naar het doel. *
 export function solveElbow(targetPoint, dimensions, joint) {
   const points = getArmPoints(dimensions);
   const rotation = calculateRotation(points.elbow, points.end, targetPoint);
   elbow = limitAngle(elbow + rotation, joint);
 }
 
-/** Stap 3: richt de lijn van schouder naar arm-tip naar het doel. */
+// richt de lijn van schouder naar arm-tip naar het doel.
 export function solveShoulder(targetPoint, dimensions, joint) {
   const points = getArmPoints(dimensions);
   const rotation = calculateRotation(points.shoulder, points.end, targetPoint);
   shoulder = limitAngle(shoulder + rotation, joint);
 }
 
-/** Herhaal pols -> elleboog -> schouder totdat de arm-tip bij het XYZ-doel is. */
+// Herhaal pols -> elleboog -> schouder totdat de arm-tip bij het XYZ-doel s.
 export function solveIK(arm, target, handAngles = {}) {
   if (!target || !['x', 'y', 'z'].every(name =>
     typeof target[name] === 'number' && Number.isFinite(target[name]))) {

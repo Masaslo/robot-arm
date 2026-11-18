@@ -163,20 +163,17 @@ export function mountManual(root) {
     button.textContent = state.pending ? 'Versturen…' : 'Send Angles';
     canvas.hidden = !arm.previewReady;
     root.querySelector('#preview-fallback').hidden = arm.previewReady;
-    root.querySelector('#calibration-status').textContent = arm.calibrated ?
-      'Kalibratie actief · controleer de vrije werkruimte.' : 'Demomodel · Send Angles verstuurt de getoonde servohoeken.';
     const poseStatus = root.querySelector('#pose-status');
     const poseMessage = !arm.previewReady ? '3D-weergave niet beschikbaar. Versturen is geblokkeerd.' :
-      !state.valid ? state.error : IK_COMPLETE ? 'De weergave toont de actuele armstand.' :
+      !state.valid ? state.error : IK_COMPLETE ? '' :
         'De inverse kinematics is nog in opbouw.';
     if (poseStatus.textContent !== poseMessage) poseStatus.textContent = poseMessage;
     poseStatus.dataset.kind = state.valid ? 'valid' : 'error';
     for (const name of fieldNames) inputs[name].setAttribute('aria-invalid', String(!state.valid));
     root.querySelector('#preview-label').textContent = !arm.previewReady ? '3D niet beschikbaar' :
       !state.valid ? 'Actuele armstand · ongeldige invoer niet toegepast' :
-        IK_COMPLETE ? 'Actuele armstand' : 'Actuele armstand · IK in opbouw';
+        IK_COMPLETE ? '' : 'Actuele armstand · IK in opbouw';
     root.querySelector('.demo-badge').textContent = arm.calibrated ? 'Gekalibreerd' : 'Demomodel';
-    root.querySelector('#readouts-label').textContent = 'Servohoeken van de actuele armstand';
     for (const [name, joint] of Object.entries(arm.joints)) {
       root.querySelector(`#angle-${name}`).value = `${servoAngles[joint.servoId]}°`;
     }
@@ -188,7 +185,7 @@ export function mountManual(root) {
       input.style.setProperty('--slider-fill', `${extent > 0 ? (Number(input.value) - Number(input.min)) / extent * 100 : 0}%`);
     }
     const feedback = root.querySelector('#send-status');
-    const feedbackMessage = state.feedback?.message ?? state.blockedReason ?? 'Klaar om de actuele servohoeken te versturen.';
+    const feedbackMessage = state.feedback?.message ?? state.blockedReason ?? '';
     if (feedback.textContent !== feedbackMessage) feedback.textContent = feedbackMessage;
     feedback.dataset.kind = state.feedback?.kind ?? 'info';
     keyboard?.setAvailable(!state.pending && arm.previewReady && state.valid,

@@ -26,6 +26,7 @@
 .preview-fallback h3 { font-size: 1.1rem; font-weight: 600; }
 .preview-fallback p { max-width: 38ch; font-size: .85rem; color: var(--muted); }
 .servo-controls { display: grid; gap: 16px; margin-top: 14px; min-width: 0; }
+.camera-widget img { display: block; width: 100%; height: auto; max-height: 180px; object-fit: contain; margin-top: 12px; border-radius: 8px; }
 .widget-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .angle-list { display: grid; margin-top: 18px; gap: 10px; }
 .angle-list > div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
@@ -56,8 +57,6 @@
 .send-status { margin-top: 10px; font-size: .78rem; line-height: 1.5; color: var(--muted); min-height: 2.9em; overflow-wrap: anywhere; }
 .send-status[data-kind="error"] { color: var(--danger); }
 .send-status[data-kind="success"] { color: var(--accent); }
-.workspace-note { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: center; gap: 8px; color: var(--muted); font-size: .79rem; padding-top: 4px; }
-.status-dot { flex: 0 0 6px; height: 6px; border-radius: 50%; background: var(--accent); align-self: center; }
 /* Toetsenblok en aan/uit-patroon overgenomen van Robo-Twin's ControlWidget. */
 .keyboard-toggle { width: 100%; min-height: 42px; margin-top: 16px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #343a3e; color: var(--ink); font-size: .83rem; font-weight: 600; }
 .keyboard-toggle:hover:not(:disabled) { border-color: var(--accent); }
@@ -87,7 +86,6 @@
   .arm-preview { grid-column: 1 / -1; grid-row: 1; }
   .canvas-container { height: clamp(360px, 51vh, 520px); flex: auto; }
   .target-controls, .servo-controls { margin-top: 0; }
-  .workspace-note { padding-top: 6px; }
 }
 @media (max-width: 520px) {
   .manual-workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
@@ -96,5 +94,4 @@
   .target-fields { grid-template-columns: 1fr 1fr; gap: 17px 15px; margin-top: 20px; }
   .pitch-field { padding: 0; margin: 0; border: 0; }
   .pose-status { margin-top: 18px; }
-  .workspace-note { justify-content: flex-start; }
 }

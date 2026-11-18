@@ -1,0 +1,13 @@
+version: 1.1.0
+description: PCA9685 Driver by TNY Robotics
+url: https://github.com/TNY-Robotics/pca9685-esp-idf
+repository: https://github.com/TNY-Robotics/pca9685-esp-idf
+issues: https://github.com/TNY-Robotics/pca9685-esp-idf
+maintainers:
+  - "TNY Robotics <contact@tny-robotics.com>"
+tags:
+  - PCA9685
+  - pwm
+  - i2c
+  - driver
+  - esp-idf

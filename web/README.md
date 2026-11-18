@@ -2,6 +2,10 @@
 
 Vanilla JavaScript, Vite en lokaal geïnstalleerde Three.js. Manual gebruikt CCD inverse kinematics om de arm-tip naar een XYZ-doel te bewegen. Automatic blijft een placeholder voor de camerastream.
 
+## Camerabeeld
+
+Een camera stuurt een ruwe JPEG naar `POST /api/camera/frame` met `Content-Type: image/jpeg` (maximaal 2 MB). Bijvoorbeeld: `curl -X POST -H 'Content-Type: image/jpeg' --data-binary @foto.jpg http://localhost:3000/api/camera/frame`. De backend bewaart alleen het laatste frame in geheugen; na een herstart is er geen frame. `GET /api/camera/frame` geeft dit frame terug, of 404 als het ontbreekt. De widget in Manual haalt elke seconde het nieuwste beeld op en bewaart het laatste zichtbare beeld bij een verbindingsfout.
+
 ## De arm bedienen
 
 De bestaande pagina maakt **één** arm aan in `mountManual()`. In `app.js` kun je deze bedienen via `manual.arm`:

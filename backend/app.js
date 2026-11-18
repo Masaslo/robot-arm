@@ -3,6 +3,27 @@ import {fileURLToPath} from 'node:url';
 
 export function createApp({sendTarget}) {
   const app = express();
+  let cameraFrame;
+  app.post('/api/camera/frame', (req, res, next) => {
+    if (!req.is('image/jpeg')) return res.status(415).json({error: 'Verwacht een JPEG-afbeelding.'});
+    next();
+  }, express.raw({type: 'image/jpeg', limit: '2mb'}), (req, res) => {
+    const frame = req.body;
+    if (!Buffer.isBuffer(frame) || frame.length < 4 || frame[0] !== 0xff || frame[1] !== 0xd8 ||
+        frame[frame.length - 2] !== 0xff || frame[frame.length - 1] !== 0xd9) {
+      return res.status(400).json({error: 'Ongeldige JPEG-afbeelding.'});
+    }
+    cameraFrame = frame;
+    res.sendStatus(204);
+  }, (error, req, res, next) => {
+    if (error.type === 'entity.too.large') return res.status(413).json({error: 'JPEG is groter dan 2 MB.'});
+    next(error);
+  });
+  app.get('/api/camera/frame', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!cameraFrame) return res.sendStatus(404);
+    res.type('image/jpeg').send(cameraFrame);
+  });
   app.use(express.json({limit: '1kb'}));
   app.post('/api/servo', async (req, res) => {
     const {servoId, angle} = req.body ?? {};

@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "/home/floris/School/robot-arm/firmware"
+    "cmake.sourceDirectory": "/home/floris/School/robot-arm/firmware",
+    "idf.currentSetup": "/home/floris/.espressif/v6.1/esp-idf"
 }

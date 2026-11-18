@@ -32,7 +32,7 @@ h1, h2, h3, p, figure, dl, dd { margin: 0; }
 h2 { font-size: 1rem; line-height: 1.4; font-weight: 650; }
 svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell { max-width: 1680px; margin: 0 auto; padding: 24px 28px 18px; min-height: 100dvh; display: flex; flex-direction: column; }
-.app-header { display: grid; grid-template-columns: 1fr 290px 1fr; align-items: center; gap: 28px; padding-bottom: 30px; }
+.app-header { display: grid; grid-template-columns: 1fr 290px 1fr; align-items: center; gap: 28px; }
 .wordmark { display: flex; align-items: center; gap: 12px; font-size: 1.7rem; font-weight: 650; letter-spacing: -.025em; white-space: nowrap; }
 .wordmark svg { width: 33px; height: 33px; color: var(--accent); stroke-width: 1.8; }
 .header-note { justify-self: end; font-size: .82rem; color: var(--muted); }
@@ -46,7 +46,6 @@ main { flex: 1; }
 [role="tabpanel"]:focus-visible { outline-offset: 8px; border-radius: 12px; }
 .widget { padding: 20px; border-radius: 16px; background: var(--widget); box-shadow: 0 12px 30px rgb(0 0 0 / 14%); }
 .widget-description { color: var(--muted); font-size: .8rem; line-height: 1.5; margin-top: 5px; }
-.app-footer { display: flex; gap: 12px; justify-content: space-between; color: var(--muted); font-size: .75rem; padding-top: 30px; }
 .skip-link { position: fixed; z-index: 10; top: 10px; left: 20px; padding: 10px 16px; background: var(--accent); color: var(--accent-ink); border-radius: 8px; transform: translateY(-180%); }
 .skip-link:focus { transform: translateY(0); }
 .automatic-placeholder { max-width: 440px; margin: clamp(70px, 16vh, 160px) auto; text-align: center; }
@@ -63,9 +62,8 @@ main { flex: 1; }
 }
 @media (max-width: 620px) {
   .app-shell { padding: 18px 16px; }
-  .app-header { grid-template-columns: 1fr; gap: 18px; padding-bottom: 24px; }
+  .app-header { grid-template-columns: 1fr; gap: 18px; }
   .wordmark { font-size: 1.5rem; }
   .mode-switch { width: min(290px, 100%); justify-self: center; }
-  .app-footer { flex-direction: column; gap: 4px; padding-top: 24px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
